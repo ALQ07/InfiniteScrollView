@@ -8,11 +8,15 @@ const { ccclass, property } = _decorator;
 @ccclass('InfiniteScrollView')
 export class InfiniteScrollView extends Component {
     @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' }) scrollDir: number = 0
+    @property({ type: Number, tooltip: '垂直滚动时的列数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 1; } }) gridColumns: number = 1
+    @property({ type: Number, tooltip: '水平滚动时的行数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 0; } }) gridRows: number = 1
     @property({ type: Number, tooltip: '项间距' }) spacing: number = 150
     @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
     @property({ type: Boolean, tooltip: '放大镜效果' }) zoom: boolean = false
 
     private itemLength: number = 0
+    private itemWidth: number = 0
+    private itemHeight: number = 0
     private contentLength: number = 0
     private items: Node[] = []
     private startTimeStamp: number = 0
@@ -70,9 +74,8 @@ export class InfiniteScrollView extends Component {
         });
     }
 
-
     /**
-     * 初始化数据
+     * 初始化数据（只在初始化调用一次）
      * @param itemCount 项数
      * @param eachOneItemLoadCB 每个项的加载回调
      */
@@ -81,12 +84,38 @@ export class InfiniteScrollView extends Component {
         this.startIndex = 0
         this.lastIndex = this.node.children.length - 1
         this.maxIndex = itemCount - 1
-        this.itemLength = this.scrollDir ? this.node.children[0].getComponent(UITransform).height : this.node.children[0].getComponent(UITransform).width
+
+        const itemTrans = this.node.children[0].getComponent(UITransform);
+        this.itemWidth = itemTrans.width;
+        this.itemHeight = itemTrans.height;
+        this.itemLength = this.scrollDir ? this.itemHeight : this.itemWidth;
+
         this.contentLength = this.scrollDir ? this.node.getComponent(UITransform).height : this.node.getComponent(UITransform).width
+
+        const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+        // 计算副轴起始位置，使网格居中
+        const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight) + (groupSize - 1) * this.spacing;
+        const crossStart = this.scrollDir ? (-crossTotal / 2 + this.itemWidth / 2) : (crossTotal / 2 - this.itemHeight / 2);
+
         this.node.children.forEach((item, index) => {
             this.items.push(item)
-            item.position = v3(this.scrollDir ? 0 : index * (this.itemLength + this.spacing) + this.itemLength / 2, this.scrollDir ? -index * (this.itemLength + this.spacing) - this.itemLength / 2 : 0, 0)
             item.getComponent(UITransform).setAnchorPoint(0.5, 0.5)
+
+            const mainIndex = Math.floor(index / groupSize);
+            const crossIndex = index % groupSize;
+
+            if (this.scrollDir) {
+                // 垂直滚动
+                const x = crossStart + crossIndex * (this.itemWidth + this.spacing);
+                const y = -mainIndex * (this.itemHeight + this.spacing) - this.itemHeight / 2;
+                item.position = v3(x, y, 0);
+            } else {
+                // 水平滚动
+                const x = mainIndex * (this.itemWidth + this.spacing) + this.itemWidth / 2;
+                const y = crossStart - crossIndex * (this.itemHeight + this.spacing);
+                item.position = v3(x, y, 0);
+            }
+
             this.loadcb(item, index)
         })
         this.updateScale()
@@ -120,7 +149,7 @@ export class InfiniteScrollView extends Component {
 
         if (this.circular) {
             this.node.children.forEach((item, index) => {
-                item.position = v3(this.scrollDir ? 0 : item.position.x + pos, this.scrollDir ? item.position.y + pos : 0, 0)
+                item.position = v3(this.scrollDir ? item.position.x : item.position.x + pos, this.scrollDir ? item.position.y + pos : item.position.y, 0)
             })
             return pos
         }
@@ -176,7 +205,7 @@ export class InfiniteScrollView extends Component {
         if (Math.abs(pos) < 0.001) return 0
 
         this.node.children.forEach((item, index) => {
-            item.position = v3(this.scrollDir ? 0 : item.position.x + pos, this.scrollDir ? item.position.y + pos : 0, 0)
+            item.position = v3(this.scrollDir ? item.position.x : item.position.x + pos, this.scrollDir ? item.position.y + pos : item.position.y, 0)
         })
         return pos
     }
@@ -203,51 +232,79 @@ export class InfiniteScrollView extends Component {
 
     private updateItemPos(direction: number) {
         if (direction == 0) return
+        const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+        if (this.items.length < groupSize) return;
+
         const startItem = this.items[0]
         const endItem = this.items[this.items.length - 1]
+
+        // 垂直滚动：direction < 0 (下滑，内容下移) -> 底部出界，尾移头
+        // 垂直滚动：direction > 0 (上滑，内容上移) -> 顶部出界，头移尾
+        // 水平滚动：direction < 0 (左滑，内容左移) -> 头部出界，头移尾
+        // 水平滚动：direction > 0 (右滑，内容右移) -> 尾部出界，尾移头
+
         if (direction < 0) {
             if (!this.circular && this.scrollDir && this.startIndex === 0) return
             if (!this.circular && !this.scrollDir && this.lastIndex === this.maxIndex) return
-            // 左滑/下滑
-            if (!this.scrollDir && startItem.position.x < -this.itemLength / 2) {
-                const x = endItem.position.x + this.itemLength + this.spacing
-                const item = this.items.shift()
-                item.position = v3(x, 0, 0)
-                this.items.push(item)
-                this.startIndex++
-                this.lastIndex++
-                this.loadcb(item, this.lastIndex)
-            }
+
+            // 垂直滚动：下滑，底部元素出界，放到顶部
             if (this.scrollDir && endItem.position.y < -this.contentLength - this.itemLength / 2) {
-                const y = startItem.position.y + this.itemLength + this.spacing
-                const item = this.items.pop()
-                item.position = v3(0, y, 0)
-                this.items.unshift(item)
-                this.startIndex--
-                this.lastIndex--
-                this.loadcb(item, this.startIndex)
+                const movingItems = this.items.splice(this.items.length - groupSize, groupSize);
+                this.items.unshift(...movingItems);
+                const refItem = this.items[groupSize];
+
+                movingItems.forEach((item, i) => {
+                    item.position = v3(item.position.x, refItem.position.y + this.itemLength + this.spacing, 0);
+                    this.loadcb(item, this.startIndex - groupSize + i);
+                });
+                this.startIndex -= groupSize;
+                this.lastIndex -= groupSize;
             }
+
+            // 水平滚动：左滑，头部元素出界，放到底部
+            if (!this.scrollDir && startItem.position.x < -this.itemLength / 2) {
+                const movingItems = this.items.splice(0, groupSize);
+                this.items.push(...movingItems);
+                const refItem = this.items[this.items.length - 1 - groupSize];
+
+                movingItems.forEach((item, i) => {
+                    item.position = v3(refItem.position.x + this.itemLength + this.spacing, item.position.y, 0);
+                    this.loadcb(item, this.lastIndex + 1 + i);
+                });
+                this.startIndex += groupSize;
+                this.lastIndex += groupSize;
+            }
+
         } else {
             if (!this.circular && this.scrollDir && this.lastIndex === this.maxIndex) return
             if (!this.circular && !this.scrollDir && this.startIndex === 0) return
-            // 右滑/上滑
-            if (!this.scrollDir && endItem.position.x > this.contentLength + this.itemLength / 2) {
-                const x = startItem.position.x - this.itemLength - this.spacing
-                const item = this.items.pop()
-                this.items.unshift(item)
-                item.position = v3(x, 0, 0)
-                this.startIndex--
-                this.lastIndex--
-                this.loadcb(item, this.startIndex)
-            }
+
+            // 垂直滚动：上滑，顶部元素出界，放到底部
             if (this.scrollDir && startItem.position.y > this.itemLength / 2) {
-                const y = endItem.position.y - this.itemLength - this.spacing
-                const item = this.items.shift()
-                item.position = v3(0, y, 0)
-                this.items.push(item)
-                this.startIndex++
-                this.lastIndex++
-                this.loadcb(item, this.lastIndex)
+                const movingItems = this.items.splice(0, groupSize);
+                this.items.push(...movingItems);
+                const refItem = this.items[this.items.length - 1 - groupSize];
+
+                movingItems.forEach((item, i) => {
+                    item.position = v3(item.position.x, refItem.position.y - this.itemLength - this.spacing, 0);
+                    this.loadcb(item, this.lastIndex + 1 + i);
+                });
+                this.startIndex += groupSize;
+                this.lastIndex += groupSize;
+            }
+
+            // 水平滚动：右滑，尾部元素出界，放到顶部
+            if (!this.scrollDir && endItem.position.x > this.contentLength + this.itemLength / 2) {
+                const movingItems = this.items.splice(this.items.length - groupSize, groupSize);
+                this.items.unshift(...movingItems);
+                const refItem = this.items[groupSize];
+
+                movingItems.forEach((item, i) => {
+                    item.position = v3(refItem.position.x - this.itemLength - this.spacing, item.position.y, 0);
+                    this.loadcb(item, this.startIndex - groupSize + i);
+                });
+                this.startIndex -= groupSize;
+                this.lastIndex -= groupSize;
             }
         }
     }

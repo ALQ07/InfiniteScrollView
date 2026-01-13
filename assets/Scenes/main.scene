@@ -405,7 +405,7 @@
     "_prefab": null,
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 0,
+      "x": -255.546,
       "y": 322.778,
       "z": 0
     },
@@ -458,7 +458,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -703,7 +703,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -948,7 +948,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -1193,7 +1193,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -1438,7 +1438,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -1683,7 +1683,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -1928,7 +1928,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -2173,7 +2173,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -152.506,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -2405,12 +2405,12 @@
     "_contentSize": {
       "__type__": "cc.Size",
       "width": 649.3720000000001,
-      "height": 930.976
+      "height": 296.371
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
-      "x": 0.5,
-      "y": 1
+      "x": 0,
+      "y": 0.5
     },
     "_id": "14zpu02bJA36n2D3E1tpZP"
   },
@@ -2424,10 +2424,11 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "scrollDir": 1,
-    "gridColumns": 2,
+    "scrollDir": 0,
+    "gridColumns": 1,
     "gridRows": 1,
-    "spacing": 150,
+    "spacingX": 50,
+    "spacingY": 20,
     "circular": false,
     "zoom": false,
     "_id": "91Vy1sfXtP1bs/L8sJayfN"

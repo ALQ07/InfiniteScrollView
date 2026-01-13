@@ -10,7 +10,8 @@ export class InfiniteScrollView extends Component {
     @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' }) scrollDir: number = 0
     @property({ type: Number, tooltip: '垂直滚动时的列数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 1; } }) gridColumns: number = 1
     @property({ type: Number, tooltip: '水平滚动时的行数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 0; } }) gridRows: number = 1
-    @property({ type: Number, tooltip: '项间距' }) spacing: number = 150
+    @property({ type: Number, tooltip: '横向间隔（x方向）' }) spacingX: number = 150
+    @property({ type: Number, tooltip: '纵向间隔（y方向）' }) spacingY: number = 150
     @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
     @property({ type: Boolean, tooltip: '放大镜效果' }) zoom: boolean = false
 
@@ -93,8 +94,12 @@ export class InfiniteScrollView extends Component {
         this.contentLength = this.scrollDir ? this.node.getComponent(UITransform).height : this.node.getComponent(UITransform).width
 
         const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+        const stepX = this.itemWidth + this.spacingX;
+        const stepY = this.itemHeight + this.spacingY;
+
         // 计算副轴起始位置，使网格居中
-        const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight) + (groupSize - 1) * this.spacing;
+        const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight)
+            + (groupSize - 1) * (this.scrollDir ? this.spacingX : this.spacingY);
         const crossStart = this.scrollDir ? (-crossTotal / 2 + this.itemWidth / 2) : (crossTotal / 2 - this.itemHeight / 2);
 
         this.node.children.forEach((item, index) => {
@@ -106,13 +111,13 @@ export class InfiniteScrollView extends Component {
 
             if (this.scrollDir) {
                 // 垂直滚动
-                const x = crossStart + crossIndex * (this.itemWidth + this.spacing);
-                const y = -mainIndex * (this.itemHeight + this.spacing) - this.itemHeight / 2;
+                const x = crossStart + crossIndex * stepX;
+                const y = -mainIndex * stepY - this.itemHeight / 2;
                 item.position = v3(x, y, 0);
             } else {
                 // 水平滚动
-                const x = mainIndex * (this.itemWidth + this.spacing) + this.itemWidth / 2;
-                const y = crossStart - crossIndex * (this.itemHeight + this.spacing);
+                const x = mainIndex * stepX + this.itemWidth / 2;
+                const y = crossStart - crossIndex * stepY;
                 item.position = v3(x, y, 0);
             }
 
@@ -253,8 +258,9 @@ export class InfiniteScrollView extends Component {
                 this.items.unshift(...movingItems);
                 const refItem = this.items[groupSize];
 
+                const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
                 movingItems.forEach((item, i) => {
-                    item.position = v3(item.position.x, refItem.position.y + this.itemLength + this.spacing, 0);
+                    item.position = v3(item.position.x, refItem.position.y + step, 0);
                     this.loadcb(item, this.startIndex - groupSize + i);
                 });
                 this.startIndex -= groupSize;
@@ -267,8 +273,9 @@ export class InfiniteScrollView extends Component {
                 this.items.push(...movingItems);
                 const refItem = this.items[this.items.length - 1 - groupSize];
 
+                const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
                 movingItems.forEach((item, i) => {
-                    item.position = v3(refItem.position.x + this.itemLength + this.spacing, item.position.y, 0);
+                    item.position = v3(refItem.position.x + step, item.position.y, 0);
                     this.loadcb(item, this.lastIndex + 1 + i);
                 });
                 this.startIndex += groupSize;
@@ -285,8 +292,9 @@ export class InfiniteScrollView extends Component {
                 this.items.push(...movingItems);
                 const refItem = this.items[this.items.length - 1 - groupSize];
 
+                const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
                 movingItems.forEach((item, i) => {
-                    item.position = v3(item.position.x, refItem.position.y - this.itemLength - this.spacing, 0);
+                    item.position = v3(item.position.x, refItem.position.y - step, 0);
                     this.loadcb(item, this.lastIndex + 1 + i);
                 });
                 this.startIndex += groupSize;
@@ -299,8 +307,9 @@ export class InfiniteScrollView extends Component {
                 this.items.unshift(...movingItems);
                 const refItem = this.items[groupSize];
 
+                const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
                 movingItems.forEach((item, i) => {
-                    item.position = v3(refItem.position.x - this.itemLength - this.spacing, item.position.y, 0);
+                    item.position = v3(refItem.position.x - step, item.position.y, 0);
                     this.loadcb(item, this.startIndex - groupSize + i);
                 });
                 this.startIndex -= groupSize;

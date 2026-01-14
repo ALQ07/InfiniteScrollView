@@ -229,7 +229,8 @@ export class InfiniteScrollView extends Component {
             if (half <= 0) return
             const centerPos = -(this.paddingTop + half)
             this.node.children.forEach((item, index) => {
-                const pre = 1 - Math.abs((item.position.y - centerPos) / half)
+                const preRaw = 1 - Math.abs((item.position.y - centerPos) / half)
+                const pre = Math.max(0, Math.min(1, preRaw))
                 let scale = this.maxScale - this.minScale
                 scale = scale * pre + this.minScale
                 item.setScale(scale, scale, scale)
@@ -239,7 +240,8 @@ export class InfiniteScrollView extends Component {
             if (half <= 0) return
             const centerPos = this.paddingLeft + half
             this.node.children.forEach((item, index) => {
-                const pre = 1 - Math.abs((item.position.x - centerPos) / half)
+                const preRaw = 1 - Math.abs((item.position.x - centerPos) / half)
+                const pre = Math.max(0, Math.min(1, preRaw))
                 let scale = this.maxScale - this.minScale
                 scale = scale * pre + this.minScale
                 item.setScale(scale, scale, scale)

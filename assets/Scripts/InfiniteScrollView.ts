@@ -1,9 +1,10 @@
-import { _decorator, Component, EventTouch, Node, UITransform, v3 } from 'cc';
+import { _decorator, Component, EventTouch, instantiate, Node, UITransform, v3 } from 'cc';
 const { ccclass, property } = _decorator;
 /**
- * 将此脚本挂在content节点上，然后在content下面添加组成循环的item即可使用
- * 垂直时，content锚点应为：（0.5,1）
- * 水平时，content锚点应为：（0,0.5）
+ * 将此脚本挂在任意Node上，然后在Node下面添加一个item节点作为原型，
+ * 脚本会根据原型节点的大小和间隔，动态创建和管理子节点，实现无限滚动效果。
+ * 垂直时，Node锚点应为：（0.5,1）
+ * 水平时，Node锚点应为：（0,0.5）
  */
 @ccclass('InfiniteScrollView')
 export class InfiniteScrollView extends Component {
@@ -104,12 +105,17 @@ export class InfiniteScrollView extends Component {
      * @param eachOneItemLoadCB 每个项的加载回调
      */
     public initData(itemCount: number, eachOneItemLoadCB: (itemNode: Node, index: number) => void) {
+        if (itemCount <= 0) return
+        this.items.length = 0
+
         this.loadcb = eachOneItemLoadCB
         this.startIndex = 0
-        this.lastIndex = this.node.children.length - 1
         this.maxIndex = itemCount - 1
 
-        const itemTrans = this.node.children[0].getComponent(UITransform);
+        const templateItem = this.node.children[0]
+        if (!templateItem) return
+
+        const itemTrans = templateItem.getComponent(UITransform);
         this.itemWidth = itemTrans.width;
         this.itemHeight = itemTrans.height;
         this.itemLength = this.scrollDir ? this.itemHeight : this.itemWidth;
@@ -120,6 +126,32 @@ export class InfiniteScrollView extends Component {
         const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
         const stepX = this.itemWidth + this.spacingX;
         const stepY = this.itemHeight + this.spacingY;
+
+        const viewMainLength = this.scrollDir
+            ? (this.contentLength - this.paddingTop - this.paddingBottom)
+            : (this.contentLength - this.paddingLeft - this.paddingRight)
+        const stepMain = this.scrollDir ? stepY : stepX
+        const mainGroups = Math.max(1, Math.ceil(viewMainLength / stepMain) + 2)
+
+        let poolCount = mainGroups * groupSize
+        if (itemCount < groupSize) poolCount = itemCount
+        else {
+            poolCount = Math.min(poolCount, itemCount)
+            poolCount = Math.floor(poolCount / groupSize) * groupSize
+            poolCount = Math.max(groupSize, poolCount)
+        }
+
+        while (this.node.children.length < poolCount) {
+            const cloned = instantiate(templateItem)
+            cloned.parent = this.node
+        }
+        while (this.node.children.length > poolCount) {
+            const extra = this.node.children[this.node.children.length - 1]
+            extra.removeFromParent()
+            extra.destroy()
+        }
+
+        this.lastIndex = poolCount - 1
 
         // 计算副轴起始位置，使网格居中
         const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight)
@@ -365,7 +397,7 @@ export class InfiniteScrollView extends Component {
             if (!this.circular && !this.scrollDir && this.lastIndex === this.maxIndex) return
 
             // 垂直滚动：下滑，底部元素出界，放到顶部
-            if (this.scrollDir && endItem.position.y < -(this.contentLength - this.paddingBottom) - this.itemLength / 2) {
+            if (this.scrollDir && endItem.position.y < -this.contentLength - this.itemLength / 2) {
                 const movingItems = this.items.splice(this.items.length - groupSize, groupSize);
                 this.items.unshift(...movingItems);
                 const refItem = this.items[groupSize];
@@ -380,7 +412,7 @@ export class InfiniteScrollView extends Component {
             }
 
             // 水平滚动：左滑，头部元素出界，放到底部
-            if (!this.scrollDir && startItem.position.x < this.paddingLeft - this.itemLength / 2) {
+            if (!this.scrollDir && startItem.position.x < -this.itemLength / 2) {
                 const movingItems = this.items.splice(0, groupSize);
                 this.items.push(...movingItems);
                 const refItem = this.items[this.items.length - 1 - groupSize];
@@ -399,7 +431,7 @@ export class InfiniteScrollView extends Component {
             if (!this.circular && !this.scrollDir && this.startIndex === 0) return
 
             // 垂直滚动：上滑，顶部元素出界，放到底部
-            if (this.scrollDir && startItem.position.y > -this.paddingTop + this.itemLength / 2) {
+            if (this.scrollDir && startItem.position.y > this.itemLength / 2) {
                 const movingItems = this.items.splice(0, groupSize);
                 this.items.push(...movingItems);
                 const refItem = this.items[this.items.length - 1 - groupSize];
@@ -414,7 +446,7 @@ export class InfiniteScrollView extends Component {
             }
 
             // 水平滚动：右滑，尾部元素出界，放到顶部
-            if (!this.scrollDir && endItem.position.x > (this.contentLength - this.paddingRight) + this.itemLength / 2) {
+            if (!this.scrollDir && endItem.position.x > this.contentLength + this.itemLength / 2) {
                 const movingItems = this.items.splice(this.items.length - groupSize, groupSize);
                 this.items.unshift(...movingItems);
                 const refItem = this.items[groupSize];

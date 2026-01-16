@@ -47,42 +47,46 @@ export class InfiniteScrollView extends Component {
     }
 
     update(deltaTime: number) {
-        if (this.scrollSpeed == 0) {
-            if (this.elastic && !this.circular && !this.isTouching) {
-                const rebound = this.getReboundOffset();
-                if (Math.abs(rebound) > 0.001) {
-                    const step = Math.abs(rebound) < 0.5 ? rebound : rebound * Math.min(1, deltaTime * 12);
-                    this.node.children.forEach((item, index) => {
-                        item.position = v3(
-                            this.scrollDir ? item.position.x : item.position.x + step,
-                            this.scrollDir ? item.position.y + step : item.position.y,
-                            0
-                        )
-                    })
-                    this.updateScale()
-                }
+        let v = -this.scrollSpeed
+        const canRebound = this.elastic && !this.circular && !this.isTouching
+
+        if (Math.abs(v) > 0.001) {
+            const moved = this.moveItem(v * deltaTime)
+            if (Math.abs(moved) < 0.001) {
+                v = 0
+            } else {
+                this.updateScale()
+                this.updateItemPos(v)
+                this.speedDirection = v > 0 ? 1 : -1
             }
-            return
         }
 
-        const moved = this.moveItem(- this.scrollSpeed * deltaTime)
-        if (Math.abs(moved) < 0.001 && this.scrollSpeed !== 0) {
-            this.scrollSpeed = 0
+        if (!this.isTouching) {
+            if (canRebound) {
+                const rebound = this.getReboundOffset()
+                if (Math.abs(rebound) > 0.001) {
+                    const k = 500 //弹簧强度
+                    const c = 40
+                    v += (rebound * k - v * c) * deltaTime
+                } else if (this.inertia) {
+                    const brake = Math.max(0, Math.min(1, this.brake))
+                    const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
+                    v *= factor
+                } else {
+                    v = 0
+                }
+            } else if (this.inertia) {
+                const brake = Math.max(0, Math.min(1, this.brake))
+                const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
+                v *= factor
+            } else {
+                v = 0
+            }
         }
-        this.updateScale()
-        if (this.elastic && !this.circular && !this.isTouching && this.getReboundOffset() !== 0) {
-            this.scrollSpeed = 0
-            return
-        }
-        this.updateItemPos(-this.scrollSpeed)
 
-        const brake = Math.max(0, Math.min(1, this.brake))
-        const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
-        this.speedDirection = this.scrollSpeed > 0 ? -1 : 1
-        this.scrollSpeed *= factor
-        if (Math.abs(this.scrollSpeed) < this.speedThreshold) {
-            this.scrollSpeed = 0
-        }
+        const reboundNow = canRebound ? this.getReboundOffset() : 0
+        if (Math.abs(v) < this.speedThreshold && Math.abs(reboundNow) < 0.001) v = 0
+        this.scrollSpeed = v === 0 ? 0 : -v
     }
 
     /**
@@ -258,7 +262,7 @@ export class InfiniteScrollView extends Component {
         const resistanceBaseRaw = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX)
         const resistanceBase = resistanceBaseRaw > 1 ? resistanceBaseRaw : 200
         const bounceDamping = this.bounceDamping > 0 ? this.bounceDamping : 0.01
-        const elasticBaseRaw = this.isTouching ? resistanceBase : resistanceBase * 0.35
+        const elasticBaseRaw = resistanceBase * (this.isTouching ? 1 : 0.8)
         const elasticBase = elasticBaseRaw / bounceDamping
         // 非触摸状态最大超出范围
         const maxOver = this.isTouching ? Number.POSITIVE_INFINITY : Math.max(40, resistanceBase * 3)

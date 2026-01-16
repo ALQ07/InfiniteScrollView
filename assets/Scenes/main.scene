@@ -698,9 +698,9 @@
     "paddingTop": 0,
     "paddingBottom": 0,
     "inertia": true,
-    "brake": 0.8,
+    "brake": 0.85,
     "elastic": true,
-    "bounceDamping": 1,
+    "bounceDamping": 2.3,
     "circular": false,
     "zoom": false,
     "_id": "91Vy1sfXtP1bs/L8sJayfN"

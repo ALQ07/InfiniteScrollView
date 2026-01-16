@@ -1,4 +1,4 @@
-import { _decorator, Component, EventTouch, instantiate, Node, UITransform, v3 } from 'cc';
+import { _decorator, Component, EventTouch, instantiate, Node, UITransform } from 'cc';
 const { ccclass, property } = _decorator;
 /**
  * 将此脚本挂在任意Node上，然后在Node下面添加一个item节点作为原型，
@@ -18,7 +18,7 @@ export class InfiniteScrollView extends Component {
     @property({ type: Number, tooltip: '容器上内边距' }) paddingTop: number = 0
     @property({ type: Number, tooltip: '容器下内边距' }) paddingBottom: number = 0
     @property({ type: Boolean, tooltip: '是否开启惯性滚动' }) inertia: boolean = true
-    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } }) brake: number = 0.8
+    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } }) brake: number = 0.9
     @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' }) elastic: boolean = true
     @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } }) bounceDamping: number = 1
     @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
@@ -51,23 +51,33 @@ export class InfiniteScrollView extends Component {
         const canRebound = this.elastic && !this.circular && !this.isTouching
 
         if (Math.abs(v) > 0.001) {
-            const moved = this.moveItem(v * deltaTime)
-            if (Math.abs(moved) < 0.001) {
-                v = 0
-            } else {
-                this.updateScale()
+            let remaining = deltaTime
+            const maxStep = 1 / 60
+            this.speedDirection = v > 0 ? 1 : -1
+            let movedAny = false
+            while (remaining > 0) {
+                const dt = remaining > maxStep ? maxStep : remaining
+                const moved = this.moveItem(v * dt)
+                if (Math.abs(moved) < 0.001) {
+                    v = 0
+                    break
+                }
                 this.updateItemPos(v)
-                this.speedDirection = v > 0 ? 1 : -1
+                movedAny = true
+                remaining -= dt
             }
+            if (movedAny) this.updateScale()
         }
 
         if (!this.isTouching) {
             if (canRebound) {
                 const rebound = this.getReboundOffset()
                 if (Math.abs(rebound) > 0.001) {
-                    const k = 500 //弹簧强度
+                    const k = 250 //弹簧强度
                     const c = 40
-                    v += (rebound * k - v * c) * deltaTime
+                    const cc = c > 0 ? c : 0.0001
+                    const exp = Math.exp(-cc * deltaTime)
+                    v = v * exp + (k * rebound / cc) * (1 - exp)
                 } else if (this.inertia) {
                     const brake = Math.max(0, Math.min(1, this.brake))
                     const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
@@ -164,7 +174,9 @@ export class InfiniteScrollView extends Component {
         if (this.scrollDir) crossStart += (this.paddingLeft - this.paddingRight) / 2;
         else crossStart += (this.paddingBottom - this.paddingTop) / 2;
 
-        this.node.children.forEach((item, index) => {
+        const children = this.node.children
+        for (let index = 0; index < children.length; index++) {
+            const item = children[index]
             this.items.push(item)
             item.getComponent(UITransform).setAnchorPoint(0.5, 0.5)
 
@@ -175,16 +187,16 @@ export class InfiniteScrollView extends Component {
                 // 垂直滚动
                 const x = crossStart + crossIndex * stepX;
                 const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2;
-                item.position = v3(x, y, 0);
+                item.setPosition(x, y, 0)
             } else {
                 // 水平滚动
                 const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2;
                 const y = crossStart - crossIndex * stepY;
-                item.position = v3(x, y, 0);
+                item.setPosition(x, y, 0)
             }
 
             this.loadcb(item, index)
-        })
+        }
         this.updateScale()
         this.node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
             this.isTouching = true
@@ -194,8 +206,6 @@ export class InfiniteScrollView extends Component {
         }, this)
         this.node.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
             let delta = event.getDelta()
-            console.log(delta)
-            let pos = this.node.position
             this.updateScale()
             this.moveItem(this.scrollDir ? delta.y : delta.x)
             this.updateItemPos(this.scrollDir ? delta.y : delta.x)
@@ -246,9 +256,12 @@ export class InfiniteScrollView extends Component {
         if (this.items.length === 0) return 0
 
         if (this.circular) {
-            this.node.children.forEach((item, index) => {
-                item.position = v3(this.scrollDir ? item.position.x : item.position.x + pos, this.scrollDir ? item.position.y + pos : item.position.y, 0)
-            })
+            for (let i = 0; i < this.items.length; i++) {
+                const item = this.items[i]
+                const p = item.position
+                if (this.scrollDir) item.setPosition(p.x, p.y + pos, 0)
+                else item.setPosition(p.x + pos, p.y, 0)
+            }
             return pos
         }
 
@@ -350,9 +363,12 @@ export class InfiniteScrollView extends Component {
 
         if (Math.abs(pos) < 0.001) return 0
 
-        this.node.children.forEach((item, index) => {
-            item.position = v3(this.scrollDir ? item.position.x : item.position.x + pos, this.scrollDir ? item.position.y + pos : item.position.y, 0)
-        })
+        for (let i = 0; i < this.items.length; i++) {
+            const item = this.items[i]
+            const p = item.position
+            if (this.scrollDir) item.setPosition(p.x, p.y + pos, 0)
+            else item.setPosition(p.x + pos, p.y, 0)
+        }
         return pos
     }
 
@@ -362,24 +378,26 @@ export class InfiniteScrollView extends Component {
             const half = (this.contentLength - this.paddingTop - this.paddingBottom) / 2
             if (half <= 0) return
             const centerPos = -(this.paddingTop + half)
-            this.node.children.forEach((item, index) => {
+            for (let i = 0; i < this.items.length; i++) {
+                const item = this.items[i]
                 const preRaw = 1 - Math.abs((item.position.y - centerPos) / half)
                 const pre = Math.max(0, Math.min(1, preRaw))
                 let scale = this.maxScale - this.minScale
                 scale = scale * pre + this.minScale
                 item.setScale(scale, scale, scale)
-            })
+            }
         } else {
             const half = (this.contentLength - this.paddingLeft - this.paddingRight) / 2
             if (half <= 0) return
             const centerPos = this.paddingLeft + half
-            this.node.children.forEach((item, index) => {
+            for (let i = 0; i < this.items.length; i++) {
+                const item = this.items[i]
                 const preRaw = 1 - Math.abs((item.position.x - centerPos) / half)
                 const pre = Math.max(0, Math.min(1, preRaw))
                 let scale = this.maxScale - this.minScale
                 scale = scale * pre + this.minScale
                 item.setScale(scale, scale, scale)
-            })
+            }
         }
     }
 
@@ -407,10 +425,11 @@ export class InfiniteScrollView extends Component {
                 const refItem = this.items[groupSize];
 
                 const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
-                movingItems.forEach((item, i) => {
-                    item.position = v3(item.position.x, refItem.position.y + step, 0);
+                for (let i = 0; i < movingItems.length; i++) {
+                    const item = movingItems[i]
+                    item.setPosition(item.position.x, refItem.position.y + step, 0)
                     this.loadcb(item, this.startIndex - groupSize + i);
-                });
+                }
                 this.startIndex -= groupSize;
                 this.lastIndex -= groupSize;
             }
@@ -422,10 +441,11 @@ export class InfiniteScrollView extends Component {
                 const refItem = this.items[this.items.length - 1 - groupSize];
 
                 const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
-                movingItems.forEach((item, i) => {
-                    item.position = v3(refItem.position.x + step, item.position.y, 0);
+                for (let i = 0; i < movingItems.length; i++) {
+                    const item = movingItems[i]
+                    item.setPosition(refItem.position.x + step, item.position.y, 0)
                     this.loadcb(item, this.lastIndex + 1 + i);
-                });
+                }
                 this.startIndex += groupSize;
                 this.lastIndex += groupSize;
             }
@@ -441,10 +461,11 @@ export class InfiniteScrollView extends Component {
                 const refItem = this.items[this.items.length - 1 - groupSize];
 
                 const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
-                movingItems.forEach((item, i) => {
-                    item.position = v3(item.position.x, refItem.position.y - step, 0);
+                for (let i = 0; i < movingItems.length; i++) {
+                    const item = movingItems[i]
+                    item.setPosition(item.position.x, refItem.position.y - step, 0)
                     this.loadcb(item, this.lastIndex + 1 + i);
-                });
+                }
                 this.startIndex += groupSize;
                 this.lastIndex += groupSize;
             }
@@ -456,10 +477,11 @@ export class InfiniteScrollView extends Component {
                 const refItem = this.items[groupSize];
 
                 const step = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX);
-                movingItems.forEach((item, i) => {
-                    item.position = v3(refItem.position.x - step, item.position.y, 0);
+                for (let i = 0; i < movingItems.length; i++) {
+                    const item = movingItems[i]
+                    item.setPosition(refItem.position.x - step, item.position.y, 0)
                     this.loadcb(item, this.startIndex - groupSize + i);
-                });
+                }
                 this.startIndex -= groupSize;
                 this.lastIndex -= groupSize;
             }

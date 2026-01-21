@@ -1,4 +1,4 @@
-import { _decorator, Component, Label, Node } from 'cc';
+import { _decorator, Button, Component, Label, Node } from 'cc';
 import { InfiniteScrollView } from './InfiniteScrollView';
 const { ccclass, property } = _decorator;
 
@@ -8,8 +8,13 @@ export class Usage extends Component {
     content: Node = null;
 
     start() {
-        this.content.getComponent(InfiniteScrollView).initData(10, (itemNode: Node, index: number) => {
+        this.content.getComponent(InfiniteScrollView).initData(100, (itemNode: Node, index: number) => {
             itemNode.getChildByPath('Label').getComponent(Label).string = `${index}`;
+            itemNode.getChildByPath('Button').on(Button.EventType.CLICK, this.onClickButton, this);
         });
+    }
+
+    onClickButton() {
+        console.log('click button');
     }
 }

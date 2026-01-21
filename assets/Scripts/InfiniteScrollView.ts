@@ -37,11 +37,20 @@ export class InfiniteScrollView extends Component {
     private speedDirection: number = 0
     private isInertialScroll: boolean = false
     private isTouching: boolean = false
+    private isDragging: boolean = false
+    private cancelTouchTarget: Node = null
+    private startTouchX: number = 0
+    private startTouchY: number = 0
+    private lastMoveTime: number = 0
+    private lastDeltaX: number = 0
+    private lastDeltaY: number = 0
+    private lastDeltaTime: number = 0
     private t_callback: () => void
     private loadcb: (itemNode: Node, index: number) => void
     private startIndex: number = 0
     private lastIndex: number = 0
     private maxIndex: number = 0
+    private dragThreshold: number = 10 // 拖动阈值（像素）
     protected onLoad(): void {
         // this.initData()
     }
@@ -200,35 +209,98 @@ export class InfiniteScrollView extends Component {
         this.updateScale()
         this.node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
             this.isTouching = true
+            this.isDragging = false
+            this.cancelTouchTarget = null
             this.startTimeStamp = new Date().getTime()
+            const loc = event.getLocation()
+            this.startTouchX = loc.x
+            this.startTouchY = loc.y
+            this.lastMoveTime = this.startTimeStamp
+            this.lastDeltaX = 0
+            this.lastDeltaY = 0
+            this.lastDeltaTime = 0
             this.scrollSpeed = 0
             // this.unschedule(this.t_callback)
-        }, this)
+        }, this, true)
         this.node.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
-            let delta = event.getDelta()
+            const loc = event.getLocation()
+            const dx = loc.x - this.startTouchX
+            const dy = loc.y - this.startTouchY
+            const mainMove = this.scrollDir ? Math.abs(dy) : Math.abs(dx)
+            if (!this.isDragging) {
+                if (mainMove < this.dragThreshold) return
+                this.isDragging = true
+                const target = event.target as Node
+                if (target) {
+                    this.cancelTouchTarget = target
+                    target.emit(Node.EventType.TOUCH_CANCEL, event)
+                }
+                const nowTimeStamp = new Date().getTime()
+                this.lastMoveTime = nowTimeStamp
+                this.lastDeltaX = 0
+                this.lastDeltaY = 0
+                this.lastDeltaTime = 0
+            }
+            this.stopEvent(event)
+            const nowTimeStamp = new Date().getTime()
+            const delta = event.getDelta()
+            const dt = (nowTimeStamp - this.lastMoveTime) / 1000
+            if (dt > 0) {
+                this.lastDeltaX = delta.x
+                this.lastDeltaY = delta.y
+                this.lastDeltaTime = dt
+            }
+            this.lastMoveTime = nowTimeStamp
             this.updateScale()
             this.moveItem(this.scrollDir ? delta.y : delta.x)
             this.updateItemPos(this.scrollDir ? delta.y : delta.x)
-        }, this)
+        }, this, true)
         this.node.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
             this.isTouching = false
+            if (!this.isDragging) {
+                this.scrollSpeed = 0
+                return
+            }
+            this.stopEvent(event)
+            this.isDragging = false
+            this.cancelTouchTarget = null
             if (!this.inertia) {
                 this.scrollSpeed = 0
                 return
             }
 
-            const nowTimeStamp = new Date().getTime()
-            const diffTimeStamp = (nowTimeStamp - this.startTimeStamp) / 1000
-            const diffX = event.getStartLocation().x - event.getLocation().x
-            const diffY = event.getStartLocation().y - event.getLocation().y
-            this.scrollSpeed = diffTimeStamp <= 0 ? 0 : (this.scrollDir ? diffY / diffTimeStamp : diffX / diffTimeStamp)
+            const dt = this.lastDeltaTime
+            const diffX = -this.lastDeltaX
+            const diffY = -this.lastDeltaY
+            this.scrollSpeed = dt <= 0 ? 0 : (this.scrollDir ? diffY / dt : diffX / dt)
             if (this.elastic && !this.circular && this.getReboundOffset() !== 0) this.scrollSpeed = 0
-        }, this)
+        }, this, true)
         this.node.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => {
             this.isTouching = false
-            this.scrollSpeed = 0
+            if (this.isDragging) {
+                this.stopEvent(event)
+                if (this.inertia) {
+                    const dt = this.lastDeltaTime
+                    const diffX = -this.lastDeltaX
+                    const diffY = -this.lastDeltaY
+                    this.scrollSpeed = dt <= 0 ? 0 : (this.scrollDir ? diffY / dt : diffX / dt)
+                    if (this.elastic && !this.circular && this.getReboundOffset() !== 0) this.scrollSpeed = 0
+                } else {
+                    this.scrollSpeed = 0
+                }
+            } else {
+                this.scrollSpeed = 0
+            }
+            this.isDragging = false
+            this.cancelTouchTarget = null
             this.updateScale()
-        }, this)
+        }, this, true)
+    }
+
+    private stopEvent(event: EventTouch) {
+        const e = event as unknown as { stopPropagation?: () => void; propagationStopped?: boolean }
+        if (e.stopPropagation) e.stopPropagation()
+        else e.propagationStopped = true
     }
 
     private getReboundOffset(): number {

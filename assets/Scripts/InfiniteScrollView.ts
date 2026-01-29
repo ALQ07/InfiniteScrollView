@@ -11,14 +11,14 @@ export class InfiniteScrollView extends Component {
     @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' }) scrollDir: number = 0
     @property({ type: Number, tooltip: '垂直滚动时的列数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 1; } }) gridColumns: number = 1
     @property({ type: Number, tooltip: '水平滚动时的行数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 0; } }) gridRows: number = 1
-    @property({ type: Number, tooltip: '相邻子节点横向间隔（x方向）' }) spacingX: number = 50
-    @property({ type: Number, tooltip: '相邻子节点纵向间隔（y方向）' }) spacingY: number = 50
+    @property({ type: Number, tooltip: '相邻子节点横向间隔（x方向）' }) spacingX: number = 0
+    @property({ type: Number, tooltip: '相邻子节点纵向间隔（y方向）' }) spacingY: number = 0
     @property({ type: Number, tooltip: '容器左内边距' }) paddingLeft: number = 0
     @property({ type: Number, tooltip: '容器右内边距' }) paddingRight: number = 0
     @property({ type: Number, tooltip: '容器上内边距' }) paddingTop: number = 0
     @property({ type: Number, tooltip: '容器下内边距' }) paddingBottom: number = 0
     @property({ type: Boolean, tooltip: '是否开启惯性滚动' }) inertia: boolean = true
-    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } }) brake: number = 0.9
+    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } }) brake: number = 0.93
     @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' }) elastic: boolean = true
     @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } }) bounceDamping: number = 1
     @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
@@ -314,9 +314,21 @@ export class InfiniteScrollView extends Component {
         const bottomLimit = -(this.contentLength - this.paddingBottom - this.itemLength / 2)
 
         if (this.scrollDir) {
+            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+                const contentSpan = firstItem.position.y - lastItem.position.y
+                const viewSpan = topLimit - bottomLimit
+                if (contentSpan < viewSpan) return topLimit - firstItem.position.y
+            }
+
             if (this.startIndex === 0 && firstItem.position.y < topLimit) return topLimit - firstItem.position.y
             if (this.lastIndex === this.maxIndex && lastItem.position.y > bottomLimit) return bottomLimit - lastItem.position.y
             return 0
+        }
+
+        if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+            const contentSpan = lastItem.position.x - firstItem.position.x
+            const viewSpan = rightLimit - leftLimit
+            if (contentSpan < viewSpan) return leftLimit - firstItem.position.x
         }
 
         if (this.startIndex === 0 && firstItem.position.x > leftLimit) return leftLimit - firstItem.position.x
@@ -344,6 +356,22 @@ export class InfiniteScrollView extends Component {
         const topLimit = -this.paddingTop - this.itemLength / 2
         const bottomLimit = -(this.contentLength - this.paddingBottom - this.itemLength / 2)
 
+        // Check if content is smaller than view
+        let isContentShort = false
+        if (this.scrollDir) {
+            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+                const contentSpan = firstItem.position.y - lastItem.position.y
+                const viewSpan = topLimit - bottomLimit
+                if (contentSpan < viewSpan) isContentShort = true
+            }
+        } else {
+            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+                const contentSpan = lastItem.position.x - firstItem.position.x
+                const viewSpan = rightLimit - leftLimit
+                if (contentSpan < viewSpan) isContentShort = true
+            }
+        }
+
         const resistanceBaseRaw = this.itemLength + (this.scrollDir ? this.spacingY : this.spacingX)
         const resistanceBase = resistanceBaseRaw > 1 ? resistanceBaseRaw : 200
         const bounceDamping = this.bounceDamping > 0 ? this.bounceDamping : 0.01
@@ -355,8 +383,11 @@ export class InfiniteScrollView extends Component {
         // 向上滑 (pos > 0)，内容上移 / 向右滑 (pos > 0)，内容右移
         if (pos > 0) {
             if (this.scrollDir && this.lastIndex === this.maxIndex) {
+                // If content is short and we are below top limit, ignore bottom limit check to allow returning to top
+                const ignoreBottomCheck = isContentShort && firstItem.position.y < topLimit
+
                 const targetY = lastItem.position.y + pos
-                if (targetY > bottomLimit) {
+                if (!ignoreBottomCheck && targetY > bottomLimit) {
                     if (this.elastic) {
                         const over = targetY - bottomLimit
                         pos = pos / (1 + over / elasticBase)
@@ -413,8 +444,11 @@ export class InfiniteScrollView extends Component {
                     }
                 }
             } else if (!this.scrollDir && this.lastIndex === this.maxIndex) {
+                // If content is short and we are right of left limit, ignore right limit check to allow returning to left
+                const ignoreRightCheck = isContentShort && firstItem.position.x > leftLimit
+
                 const targetX = lastItem.position.x + pos
-                if (targetX < rightLimit) {
+                if (!ignoreRightCheck && targetX < rightLimit) {
                     if (this.elastic) {
                         const over = rightLimit - targetX
                         pos = pos / (1 + over / elasticBase)

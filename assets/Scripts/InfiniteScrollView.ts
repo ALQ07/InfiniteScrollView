@@ -383,24 +383,41 @@ export class InfiniteScrollView extends Component {
         // 向上滑 (pos > 0)，内容上移 / 向右滑 (pos > 0)，内容右移
         if (pos > 0) {
             if (this.scrollDir && this.lastIndex === this.maxIndex) {
-                // If content is short and we are below top limit, ignore bottom limit check to allow returning to top
-                const ignoreBottomCheck = isContentShort && firstItem.position.y < topLimit
-
-                const targetY = lastItem.position.y + pos
-                if (!ignoreBottomCheck && targetY > bottomLimit) {
-                    if (this.elastic) {
-                        const over = targetY - bottomLimit
-                        pos = pos / (1 + over / elasticBase)
-                        if (Number.isFinite(maxOver)) {
-                            const nextY = lastItem.position.y + pos
-                            const maxY = bottomLimit + maxOver
-                            if (nextY > maxY) pos = maxY - lastItem.position.y
+                // If content is short, we should calculate resistance based on deviation from TOP limit, not bottom
+                if (isContentShort) {
+                    const targetY = firstItem.position.y + pos
+                    if (targetY > topLimit) {
+                        if (this.elastic) {
+                            const over = targetY - topLimit
+                            pos = pos / (1 + over / elasticBase)
+                            if (Number.isFinite(maxOver)) {
+                                const nextY = firstItem.position.y + pos
+                                const maxY = topLimit + maxOver
+                                if (nextY > maxY) pos = maxY - firstItem.position.y
+                            }
+                        } else {
+                            const fix = topLimit - firstItem.position.y
+                            if (fix < 0) pos = 0
+                            else pos = fix
                         }
-                    } else {
-                        const fix = bottomLimit - lastItem.position.y
-                        // 如果已经超出或刚好在边界，则不再移动
-                        if (fix < 0) pos = 0
-                        else pos = fix
+                    }
+                } else {
+                    const targetY = lastItem.position.y + pos
+                    if (targetY > bottomLimit) {
+                        if (this.elastic) {
+                            const over = targetY - bottomLimit
+                            pos = pos / (1 + over / elasticBase)
+                            if (Number.isFinite(maxOver)) {
+                                const nextY = lastItem.position.y + pos
+                                const maxY = bottomLimit + maxOver
+                                if (nextY > maxY) pos = maxY - lastItem.position.y
+                            }
+                        } else {
+                            const fix = bottomLimit - lastItem.position.y
+                            // 如果已经超出或刚好在边界，则不再移动
+                            if (fix < 0) pos = 0
+                            else pos = fix
+                        }
                     }
                 }
             } else if (!this.scrollDir && this.startIndex === 0) {
@@ -444,24 +461,41 @@ export class InfiniteScrollView extends Component {
                     }
                 }
             } else if (!this.scrollDir && this.lastIndex === this.maxIndex) {
-                // If content is short and we are right of left limit, ignore right limit check to allow returning to left
-                const ignoreRightCheck = isContentShort && firstItem.position.x > leftLimit
-
-                const targetX = lastItem.position.x + pos
-                if (!ignoreRightCheck && targetX < rightLimit) {
-                    if (this.elastic) {
-                        const over = rightLimit - targetX
-                        pos = pos / (1 + over / elasticBase)
-                        if (Number.isFinite(maxOver)) {
-                            const nextX = lastItem.position.x + pos
-                            const minX = rightLimit - maxOver
-                            if (nextX < minX) pos = minX - lastItem.position.x
+                // If content is short, we should calculate resistance based on deviation from LEFT limit, not right
+                if (isContentShort) {
+                    const targetX = firstItem.position.x + pos
+                    if (targetX < leftLimit) {
+                        if (this.elastic) {
+                            const over = leftLimit - targetX
+                            pos = pos / (1 + over / elasticBase)
+                            if (Number.isFinite(maxOver)) {
+                                const nextX = firstItem.position.x + pos
+                                const minX = leftLimit - maxOver
+                                if (nextX < minX) pos = minX - firstItem.position.x
+                            }
+                        } else {
+                            const fix = leftLimit - firstItem.position.x
+                            if (fix > 0) pos = 0
+                            else pos = fix
                         }
-                    } else {
-                        const fix = rightLimit - lastItem.position.x
-                        // 如果已经超出或刚好在边界，则不再移动
-                        if (fix > 0) pos = 0
-                        else pos = fix
+                    }
+                } else {
+                    const targetX = lastItem.position.x + pos
+                    if (targetX < rightLimit) {
+                        if (this.elastic) {
+                            const over = rightLimit - targetX
+                            pos = pos / (1 + over / elasticBase)
+                            if (Number.isFinite(maxOver)) {
+                                const nextX = lastItem.position.x + pos
+                                const minX = rightLimit - maxOver
+                                if (nextX < minX) pos = minX - lastItem.position.x
+                            }
+                        } else {
+                            const fix = rightLimit - lastItem.position.x
+                            // 如果已经超出或刚好在边界，则不再移动
+                            if (fix > 0) pos = 0
+                            else pos = fix
+                        }
                     }
                 }
             }

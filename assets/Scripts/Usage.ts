@@ -8,6 +8,7 @@ export class Usage extends Component {
     content: Node = null;
 
     private itemNum: number = 0;
+    private itemIndex: number = 0;
 
     start() {
         this.content.getComponent(InfiniteScrollView).initData(1, (itemNode: Node, index: number) => {
@@ -24,7 +25,15 @@ export class Usage extends Component {
         this.itemNum = parseInt(editBox.string);
     }
 
+    endEditIndex(editBox: EditBox) {
+        this.itemIndex = parseInt(editBox.string);
+    }
+
     refresh() {
         this.content.getComponent(InfiniteScrollView).refreshItems(this.itemNum);
+    }
+
+    scrollToIndex() {
+        this.content.getComponent(InfiniteScrollView).scrollToIndex(this.itemIndex);
     }
 }

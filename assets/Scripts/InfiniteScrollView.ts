@@ -130,6 +130,166 @@ export class InfiniteScrollView extends Component {
     }
 
     /**
+     * 滚动到指定索引位置
+     * @param index 目标数据索引
+     * @param smooth 是否平滑滚动 (默认 true) 【暂未实现】
+     * @param duration 滚动时长 (秒，仅 smooth=true 时有效)
+     */
+    public scrollToIndex(index: number, smooth: boolean = true, duration: number = 0.5) {
+        if (index < 0 || index > this.maxIndex) {
+            console.warn(`[InfiniteScrollView] scrollToIndex: Index ${index} out of range (0~${this.maxIndex})`);
+            return;
+        }
+
+        // 停止当前滚动惯性
+        this.scrollSpeed = 0;
+
+        // 计算目标位置的偏移量
+        const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+        const mainIndex = Math.floor(index / groupSize);
+
+        // 计算可视范围内能容纳的最大行数/列数
+        const stepMain = this.scrollDir
+            ? (this.itemHeight + this.spacingY)
+            : (this.itemWidth + this.spacingX);
+        const viewMainLength = this.scrollDir
+            ? (this.contentLength - this.paddingTop - this.paddingBottom)
+            : (this.contentLength - this.paddingLeft - this.paddingRight);
+
+        const visibleLines = Math.ceil(viewMainLength / stepMain);
+        const totalLines = Math.ceil((this.maxIndex + 1) / groupSize);
+
+        // 目标起始行
+        let targetStartLine = Math.floor(index / groupSize);
+
+        // 限制目标行，不要超过最大可滚动范围
+        // 最大可滚动行 = 总行数 - 可视行数
+        // 如果总行数 < 可视行数，则起始行只能是 0
+        const maxStartLine = Math.max(0, totalLines - visibleLines);
+
+        if (smooth) {
+            // 平滑滚动实现思路：
+            // 算出当前第一个 Item 的虚拟 Index（包含小数，表示偏移）。
+            // 算出目标的 Index。
+            // 启动一个 tween 或 update 里的逻辑，不断 moveItem 直到达到目标。
+            // 这比较复杂，容易出 bug。
+            // 暂时降级为瞬间跳转，或者简单的分帧移动（如果距离近）。
+            console.warn("[InfiniteScrollView] scrollToIndex: smooth scroll is not fully supported yet, jumping directly.");
+        }
+
+        // --- 瞬间跳转逻辑 ---
+
+        // 1. 确定目标 startIndex (必须是 groupSize 的倍数)
+        // 让 index 所在的行/列尽可能置顶
+        let targetStartLineIndex = Math.floor(index / groupSize);
+
+        // 边界检查：防止滚过头导致底部留白
+        let alignBottom = false;
+        const totalContentSize = (this.paddingTop + this.paddingBottom) + totalLines * stepMain - (this.spacingY);
+        if (totalContentSize <= viewMainLength) {
+            targetStartLineIndex = 0;
+        } else {
+            // 允许滚到底部对齐
+            const maxStartLine = Math.max(0, totalLines - visibleLines);
+            // 修正：强制限制不能超过最大起始行，防止底部留白
+            if (targetStartLineIndex > maxStartLine) {
+                targetStartLineIndex = maxStartLine;
+                alignBottom = true;
+            }
+        }
+
+        const newStartIndex = targetStartLineIndex * groupSize;
+
+        // 2. 更新 startIndex
+        this.startIndex = newStartIndex;
+
+        // 3. 重置 items 数组大小和内容
+        // 我们尽量复用现有的 items，不需要销毁重建，只需要重置位置和数据
+
+        // 确保 items 数量足够填满视口（通常 refreshItems 或 initData 已经计算好了 poolCount，这里假设 poolCount 不变）
+        // 如果 items 为空（未初始化），则无法滚动
+        if (this.items.length === 0) return;
+
+        // 重新计算 lastIndex
+        this.lastIndex = this.startIndex + this.items.length - 1;
+
+        // 4. 重新排列 Item 位置
+        const stepX = this.itemWidth + this.spacingX;
+        const stepY = this.itemHeight + this.spacingY;
+
+        // 计算底部对齐偏移量
+        let alignOffset = 0;
+        if (alignBottom) {
+            const lastLineRow = totalLines - 1;
+            const rowsToEnd = lastLineRow - targetStartLineIndex;
+            if (this.scrollDir) {
+                const defaultLastItemY = (-this.paddingTop - this.itemHeight / 2) - rowsToEnd * stepY;
+                const bottomLimit = -(this.contentLength - this.paddingBottom - this.itemLength / 2);
+                alignOffset = bottomLimit - defaultLastItemY;
+            } else {
+                const defaultLastItemX = (this.paddingLeft + this.itemWidth / 2) + rowsToEnd * stepX;
+                const rightLimit = this.contentLength - this.paddingRight - this.itemLength / 2;
+                alignOffset = rightLimit - defaultLastItemX;
+            }
+        }
+
+        // 重新计算副轴起点 (与 initData 保持一致)
+        const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight)
+            + (groupSize - 1) * (this.scrollDir ? this.spacingX : this.spacingY);
+        let crossStart = this.scrollDir ? (-crossTotal / 2 + this.itemWidth / 2) : (crossTotal / 2 - this.itemHeight / 2);
+        if (this.scrollDir) crossStart += (this.paddingLeft - this.paddingRight) / 2;
+        else crossStart += (this.paddingBottom - this.paddingTop) / 2;
+
+        for (let i = 0; i < this.items.length; i++) {
+            const item = this.items[i];
+            // 这里的 i 是相对于 items 数组的索引
+            // 对应的逻辑索引是 newStartIndex + i
+            // 但是布局时，我们要根据“相对于 newStartIndex 的偏移”来布局
+
+            // 这里的 mainIndex 是相对于当前视口顶部的行数
+            const currMainIndex = Math.floor(i / groupSize);
+            const currCrossIndex = i % groupSize;
+
+            if (this.scrollDir) {
+                // 垂直滚动
+                // 视口顶部的 Y 坐标：-paddingTop - this.itemHeight / 2
+                // 第 0 行（newStartIndex 所在行）应该放在视口顶部
+                const startY = -this.paddingTop - this.itemHeight / 2;
+
+                const x = crossStart + currCrossIndex * stepX;
+                let y = startY - currMainIndex * stepY; // 向下延伸
+                if (alignBottom) y += alignOffset;
+                item.setPosition(x, y, 0);
+            } else {
+                // 水平滚动
+                // 视口左侧的 X 坐标：this.paddingLeft + this.itemWidth / 2
+                const startX = this.paddingLeft + this.itemWidth / 2;
+
+                let x = startX + currMainIndex * stepX; // 向右延伸
+                if (alignBottom) x += alignOffset;
+                const y = crossStart - currCrossIndex * stepY;
+                item.setPosition(x, y, 0);
+            }
+        }
+
+        // 5. 刷新数据
+        if (this.loadcb) {
+            this.items.forEach((item, i) => {
+                const dataIndex = this.startIndex + i;
+                if (dataIndex <= this.maxIndex) {
+                    item.active = true;
+                    this.loadcb(item, dataIndex);
+                } else {
+                    item.active = false;
+                }
+            });
+        }
+
+        // 6. 更新缩放 (如果开启了 zoom)
+        this.updateScale();
+    }
+
+    /**
      * 刷新列表数据（智能刷新）
      * @param newItemCount (可选) 新的数据总数。
      * - 不传：仅刷新当前可视范围内的 Item 内容。
@@ -565,7 +725,16 @@ export class InfiniteScrollView extends Component {
         if (this.items.length === 0) return 0
 
         const firstItem = this.items[0]
-        const lastItem = this.items[this.items.length - 1]
+
+        // 找到最后一个有效的 Item (index <= maxIndex)
+        let lastValidItemIndex = this.items.length - 1;
+        if (this.lastIndex > this.maxIndex) {
+            lastValidItemIndex = this.maxIndex - this.startIndex;
+            if (lastValidItemIndex < 0) lastValidItemIndex = 0;
+            if (lastValidItemIndex >= this.items.length) lastValidItemIndex = this.items.length - 1;
+        }
+        const lastItem = this.items[lastValidItemIndex];
+
         const leftLimit = this.paddingLeft + this.itemLength / 2
         const rightLimit = this.contentLength - this.paddingRight - this.itemLength / 2
         const topLimit = -this.paddingTop - this.itemLength / 2
@@ -608,7 +777,16 @@ export class InfiniteScrollView extends Component {
         }
 
         const firstItem = this.items[0]
-        const lastItem = this.items[this.items.length - 1]
+
+        // 找到最后一个有效的 Item (index <= maxIndex)
+        let lastValidItemIndex = this.items.length - 1;
+        if (this.lastIndex > this.maxIndex) {
+            lastValidItemIndex = this.maxIndex - this.startIndex;
+            if (lastValidItemIndex < 0) lastValidItemIndex = 0;
+            if (lastValidItemIndex >= this.items.length) lastValidItemIndex = this.items.length - 1;
+        }
+        const lastItem = this.items[lastValidItemIndex];
+
         const leftLimit = this.paddingLeft + this.itemLength / 2
         const rightLimit = this.contentLength - this.paddingRight - this.itemLength / 2
         const topLimit = -this.paddingTop - this.itemLength / 2

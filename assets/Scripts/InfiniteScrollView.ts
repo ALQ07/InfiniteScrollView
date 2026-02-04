@@ -485,9 +485,15 @@ export class InfiniteScrollView extends Component {
         if (this.loadcb) {
             this.items.forEach((item, i) => {
                 const dataIndex = this.startIndex + i;
-                if (dataIndex <= this.maxIndex) {
+                let realIndex = dataIndex;
+                if (this.circular) {
+                    const total = this.maxIndex + 1;
+                    if (total > 0) realIndex = ((dataIndex % total) + total) % total;
+                }
+
+                if (this.circular || dataIndex <= this.maxIndex) {
                     item.active = true;
-                    this.loadcb(item, dataIndex);
+                    this.loadcb(item, realIndex);
                 } else {
                     // 数据越界，隐藏该 Item，且不调用回调
                     item.active = false;
@@ -539,9 +545,13 @@ export class InfiniteScrollView extends Component {
         let poolCount = mainGroups * groupSize
         if (itemCount < groupSize) poolCount = itemCount
         else {
-            poolCount = Math.min(poolCount, itemCount)
-            poolCount = Math.floor(poolCount / groupSize) * groupSize
-            poolCount = Math.max(groupSize, poolCount)
+            if (poolCount >= itemCount) {
+                poolCount = itemCount
+            } else {
+                poolCount = Math.min(poolCount, itemCount)
+                poolCount = Math.floor(poolCount / groupSize) * groupSize
+                poolCount = Math.max(groupSize, poolCount)
+            }
         }
 
         this.lastIndex = this.startIndex + poolCount - 1
@@ -779,7 +789,7 @@ export class InfiniteScrollView extends Component {
         const bottomLimit = -(this.contentLength - this.paddingBottom - this.itemLength / 2)
 
         if (this.scrollDir) {
-            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
+            if (this.items.length >= this.maxIndex + 1) {
                 const contentSpan = firstItem.position.y - lastItem.position.y
                 const viewSpan = topLimit - bottomLimit
                 if (contentSpan < viewSpan) return topLimit - firstItem.position.y
@@ -790,7 +800,7 @@ export class InfiniteScrollView extends Component {
             return 0
         }
 
-        if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
+        if (this.items.length >= this.maxIndex + 1) {
             const contentSpan = lastItem.position.x - firstItem.position.x
             const viewSpan = rightLimit - leftLimit
             if (contentSpan < viewSpan) return leftLimit - firstItem.position.x
@@ -832,14 +842,12 @@ export class InfiniteScrollView extends Component {
 
         // Check if content is smaller than view
         let isContentShort = false
-        if (this.scrollDir) {
-            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
+        if (this.items.length >= this.maxIndex + 1) {
+            if (this.scrollDir) {
                 const contentSpan = firstItem.position.y - lastItem.position.y
                 const viewSpan = topLimit - bottomLimit
                 if (contentSpan < viewSpan) isContentShort = true
-            }
-        } else {
-            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
+            } else {
                 const contentSpan = lastItem.position.x - firstItem.position.x
                 const viewSpan = rightLimit - leftLimit
                 if (contentSpan < viewSpan) isContentShort = true
@@ -1027,7 +1035,7 @@ export class InfiniteScrollView extends Component {
         for (let i = 0; i < this.items.length; i++) {
             const item = this.items[i]
             const dataIndex = this.startIndex + i
-            if (dataIndex < 0 || dataIndex > this.maxIndex) {
+            if (!this.circular && (dataIndex < 0 || dataIndex > this.maxIndex)) {
                 if (item.active) item.active = false
                 continue
             }
@@ -1076,9 +1084,15 @@ export class InfiniteScrollView extends Component {
                     const item = movingItems[i]
                     item.setPosition(item.position.x, refItem.position.y + step, 0)
                     const dataIndex = this.startIndex - groupSize + i;
-                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                    let realIndex = dataIndex;
+                    if (this.circular) {
+                        const total = this.maxIndex + 1;
+                        if (total > 0) realIndex = ((dataIndex % total) + total) % total;
+                    }
+
+                    if (this.circular || (dataIndex >= 0 && dataIndex <= this.maxIndex)) {
                         item.active = true;
-                        this.loadcb(item, dataIndex);
+                        this.loadcb(item, realIndex);
                     } else {
                         item.active = false;
                     }
@@ -1098,9 +1112,15 @@ export class InfiniteScrollView extends Component {
                     const item = movingItems[i]
                     item.setPosition(refItem.position.x + step, item.position.y, 0)
                     const dataIndex = this.lastIndex + 1 + i;
-                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                    let realIndex = dataIndex;
+                    if (this.circular) {
+                        const total = this.maxIndex + 1;
+                        if (total > 0) realIndex = ((dataIndex % total) + total) % total;
+                    }
+
+                    if (this.circular || (dataIndex >= 0 && dataIndex <= this.maxIndex)) {
                         item.active = true;
-                        this.loadcb(item, dataIndex);
+                        this.loadcb(item, realIndex);
                     } else {
                         item.active = false;
                     }
@@ -1124,9 +1144,15 @@ export class InfiniteScrollView extends Component {
                     const item = movingItems[i]
                     item.setPosition(item.position.x, refItem.position.y - step, 0)
                     const dataIndex = this.lastIndex + 1 + i;
-                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                    let realIndex = dataIndex;
+                    if (this.circular) {
+                        const total = this.maxIndex + 1;
+                        if (total > 0) realIndex = ((dataIndex % total) + total) % total;
+                    }
+
+                    if (this.circular || (dataIndex >= 0 && dataIndex <= this.maxIndex)) {
                         item.active = true;
-                        this.loadcb(item, dataIndex);
+                        this.loadcb(item, realIndex);
                     } else {
                         item.active = false;
                     }
@@ -1146,9 +1172,15 @@ export class InfiniteScrollView extends Component {
                     const item = movingItems[i]
                     item.setPosition(refItem.position.x - step, item.position.y, 0)
                     const dataIndex = this.startIndex - groupSize + i;
-                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                    let realIndex = dataIndex;
+                    if (this.circular) {
+                        const total = this.maxIndex + 1;
+                        if (total > 0) realIndex = ((dataIndex % total) + total) % total;
+                    }
+
+                    if (this.circular || (dataIndex >= 0 && dataIndex <= this.maxIndex)) {
                         item.active = true;
-                        this.loadcb(item, dataIndex);
+                        this.loadcb(item, realIndex);
                     } else {
                         item.active = false;
                     }

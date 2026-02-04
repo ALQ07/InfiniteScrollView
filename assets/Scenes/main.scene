@@ -391,7 +391,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": -3.019,
-      "y": 580.481,
+      "y": 592.743,
       "z": 0
     },
     "_lrot": {
@@ -1010,7 +1010,7 @@
     "_enabled": true,
     "__prefab": null,
     "scrollDir": 1,
-    "gridColumns": 1,
+    "gridColumns": 3,
     "gridRows": 4,
     "spacingX": 5,
     "spacingY": 50,
@@ -1022,9 +1022,9 @@
     "brake": 0.9,
     "elastic": true,
     "bounceDamping": 1,
-    "circular": false,
+    "circular": true,
     "zoom": false,
-    "frameLoad": true,
+    "frameLoad": false,
     "frameLoadInterval": 0.02,
     "_id": "91Vy1sfXtP1bs/L8sJayfN"
   },

@@ -8,23 +8,40 @@ const { ccclass, property } = _decorator;
  */
 @ccclass('InfiniteScrollView')
 export class InfiniteScrollView extends Component {
-    @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' }) scrollDir: number = 0
-    @property({ type: Number, tooltip: '垂直滚动时的列数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 1; } }) gridColumns: number = 1
-    @property({ type: Number, tooltip: '水平滚动时的行数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 0; } }) gridRows: number = 1
-    @property({ type: Number, tooltip: '相邻子节点横向间隔（x方向）' }) spacingX: number = 0
-    @property({ type: Number, tooltip: '相邻子节点纵向间隔（y方向）' }) spacingY: number = 0
-    @property({ type: Number, tooltip: '容器左内边距' }) paddingLeft: number = 0
-    @property({ type: Number, tooltip: '容器右内边距' }) paddingRight: number = 0
-    @property({ type: Number, tooltip: '容器上内边距' }) paddingTop: number = 0
-    @property({ type: Number, tooltip: '容器下内边距' }) paddingBottom: number = 0
-    @property({ type: Boolean, tooltip: '是否开启惯性滚动' }) inertia: boolean = true
-    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } }) brake: number = 0.93
-    @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' }) elastic: boolean = true
-    @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } }) bounceDamping: number = 1
-    @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
-    @property({ type: Boolean, tooltip: '是否开启放大镜效果' }) zoom: boolean = false
-    @property({ type: Boolean, tooltip: '是否开启分帧加载' }) frameLoad: boolean = false
-    @property({ type: Number, tooltip: '分帧加载间隔时间（秒）', visible: function (this: InfiniteScrollView) { return this.frameLoad; } }) frameLoadInterval: number = 0.02
+    @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' })
+    scrollDir: number = 0
+    @property({ type: Number, tooltip: '垂直滚动时的列数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 1; } })
+    gridColumns: number = 1
+    @property({ type: Number, tooltip: '水平滚动时的行数', visible: function (this: InfiniteScrollView) { return this.scrollDir === 0; } })
+    gridRows: number = 1
+    @property({ type: Number, tooltip: '相邻子节点横向间隔（x方向）' })
+    spacingX: number = 0
+    @property({ type: Number, tooltip: '相邻子节点纵向间隔（y方向）' })
+    spacingY: number = 0
+    @property({ type: Number, tooltip: '容器左内边距' })
+    paddingLeft: number = 0
+    @property({ type: Number, tooltip: '容器右内边距' })
+    paddingRight: number = 0
+    @property({ type: Number, tooltip: '容器上内边距' })
+    paddingTop: number = 0
+    @property({ type: Number, tooltip: '容器下内边距' })
+    paddingBottom: number = 0
+    @property({ type: Boolean, tooltip: '是否开启惯性滚动' })
+    inertia: boolean = true
+    @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } })
+    brake: number = 0.93
+    @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' })
+    elastic: boolean = true
+    @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } })
+    bounceDamping: number = 1
+    @property({ type: Boolean, tooltip: '是否双向循环滚动' })
+    circular: boolean = false
+    @property({ type: Boolean, tooltip: '是否开启放大镜效果' })
+    zoom: boolean = false
+    @property({ type: Boolean, tooltip: '是否开启分帧加载' })
+    frameLoad: boolean = false
+    @property({ type: Number, tooltip: '分帧加载间隔时间（秒）', visible: function (this: InfiniteScrollView) { return this.frameLoad; } })
+    frameLoadInterval: number = 0.02
 
     private itemLength: number = 0
     private itemWidth: number = 0
@@ -113,17 +130,194 @@ export class InfiniteScrollView extends Component {
     }
 
     /**
-     * 更新当前展示出来的项的数据
+     * 刷新列表数据（智能刷新）
+     * @param newItemCount (可选) 新的数据总数。
+     * - 不传：仅刷新当前可视范围内的 Item 内容。
+     * - 传值：更新列表长度，并根据数据变化智能调整滚动位置（如数据过少自动回顶，防越界等）。
      */
-    public refreshItems() {
-        if (!this.loadcb) return;
-        this.items.forEach((item, i) => {
-            // items[0] 对应 startIndex
-            // items[1] 对应 startIndex + 1
-            // ...
-            const dataIndex = this.startIndex + i;
-            this.loadcb(item, dataIndex);
-        });
+    public refreshItems(newItemCount?: number) {
+        // 1. 更新数据边界与对象池大小
+        if (newItemCount !== undefined) {
+            this.maxIndex = newItemCount - 1;
+
+            const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+            const viewMainLength = this.scrollDir
+                ? (this.contentLength - this.paddingTop - this.paddingBottom)
+                : (this.contentLength - this.paddingLeft - this.paddingRight);
+            const stepMain = this.scrollDir
+                ? (this.itemHeight + this.spacingY)
+                : (this.itemWidth + this.spacingX);
+
+            // 计算填满视口所需的最大节点数
+            const mainGroups = Math.max(1, Math.ceil(viewMainLength / stepMain) + 2);
+            let targetPoolCount = mainGroups * groupSize;
+
+            // 修正目标池大小：不能超过数据总数，也不能超过填满视口所需
+            if (newItemCount < targetPoolCount) {
+                targetPoolCount = newItemCount;
+            } else {
+                // 如果数据量足够大，确保池大小是 groupSize 的倍数
+                targetPoolCount = Math.floor(targetPoolCount / groupSize) * groupSize;
+                targetPoolCount = Math.max(groupSize, targetPoolCount);
+                if (targetPoolCount > newItemCount) targetPoolCount = newItemCount;
+            }
+
+            // 调整 this.items 数组长度以匹配 targetPoolCount
+            // A. 移除多余节点
+            while (this.items.length > targetPoolCount) {
+                const item = this.items.pop();
+                if (item) item.active = false;
+            }
+
+            // B. 补充不足节点
+            if (this.items.length < targetPoolCount) {
+                const activeSet = new Set(this.items);
+                // 优先复用隐藏的子节点
+                const candidates = this.node.children.filter(n => !activeSet.has(n));
+                let candidateIdx = 0;
+
+                while (this.items.length < targetPoolCount) {
+                    let item: Node;
+                    if (candidateIdx < candidates.length) {
+                        item = candidates[candidateIdx++];
+                    } else {
+                        // 没有可复用的，克隆一个新的
+                        // 尝试用 items[0] 作为模板，如果 items 为空，说明之前清空了，尝试用 children[0]
+                        const template = this.items.length > 0 ? this.items[0] : (this.node.children.length > 0 ? this.node.children[0] : null);
+                        if (!template) break; // 无法创建，中止
+                        item = instantiate(template);
+                        item.parent = this.node;
+                    }
+                    item.active = true;
+
+                    // 设置新节点位置
+                    if (this.items.length > 0) {
+                        const lastItem = this.items[this.items.length - 1];
+                        const lastIndex = this.items.length - 1;
+
+                        // 计算新节点相对于上一个节点的偏移
+                        // 如果刚好换行/换列
+                        if ((lastIndex + 1) % groupSize === 0) {
+                            // 换行/列：主轴增加一个 stepMain，副轴重置到起始
+                            // 注意：这里的副轴起始位置比较难获取，但我们可以利用 items[lastIndex - (groupSize - 1)] 的位置
+                            // 或者更简单：新位置 = 上一行同列位置 + stepMain
+                            // 因为 items 是连续填充的，所以新节点 (index) 应该在 index - groupSize 的那个节点的主轴方向 + stepMain
+                            const refItem = this.items[this.items.length - groupSize];
+                            if (this.scrollDir) {
+                                item.setPosition(refItem.position.x, refItem.position.y - stepMain, 0);
+                            } else {
+                                item.setPosition(refItem.position.x + stepMain, refItem.position.y, 0);
+                            }
+                        } else {
+                            // 同一行/列：主轴不变，副轴增加一个间距
+                            // 简单做法：参考上一个节点，副轴移动
+                            // 垂直滚动：副轴是 X，水平滚动：副轴是 Y
+                            const stepCrossX = this.itemWidth + this.spacingX;
+                            const stepCrossY = this.itemHeight + this.spacingY;
+
+                            if (this.scrollDir) {
+                                // 垂直滚动，副轴 X 增加
+                                item.setPosition(lastItem.position.x + stepCrossX, lastItem.position.y, 0);
+                            } else {
+                                // 水平滚动，副轴 Y 减少 (通常 Y 轴向下是负)
+                                item.setPosition(lastItem.position.x, lastItem.position.y - stepCrossY, 0);
+                            }
+                        }
+                    } else {
+                        // 如果 items 为空，说明是重新填充（虽然这种情况一般会触发 needReset，但为了健壮性）
+                        // 这种情况下很难确定位置，除非我们知道 startIndex
+                        // 假设这种情况由 reset 逻辑处理
+                    }
+
+                    this.items.push(item);
+                }
+            }
+
+            // 更新 lastIndex 标记
+            this.lastIndex = this.startIndex + this.items.length - 1;
+        }
+
+        // 2. 预判是否需要重置位置
+        let needReset = false;
+
+        // 条件A: 数据被清空
+        if (this.maxIndex < 0) {
+            needReset = true;
+        }
+        // 条件B: 传入了新数量，且计算出内容总长度不足以填满视口
+        // (这种情况下强制回顶体验最好，避免卡在中间)
+        else if (newItemCount !== undefined) {
+            const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+            const totalLines = Math.ceil(newItemCount / groupSize);
+            const itemSize = this.scrollDir ? this.itemHeight : this.itemWidth;
+            const spacing = this.scrollDir ? this.spacingY : this.spacingX;
+            const paddingHead = this.scrollDir ? this.paddingTop : this.paddingLeft;
+            const paddingTail = this.scrollDir ? this.paddingBottom : this.paddingRight;
+
+            const contentSize = paddingHead + totalLines * itemSize + Math.max(0, totalLines - 1) * spacing + paddingTail;
+            // 注意：this.contentLength 在 initData 中被赋值为 View 的尺寸
+            if (contentSize <= this.contentLength) {
+                needReset = true;
+            }
+        }
+
+        // 条件C: 当前起始位置已经严重越界（完全看不见任何数据了）
+        if (!needReset && this.startIndex > this.maxIndex) {
+            needReset = true;
+        }
+
+        // 3. 执行重置逻辑（归位）
+        if (needReset) {
+            this.scrollSpeed = 0;
+            this.startIndex = 0;
+            if (this.items.length > 0) {
+                this.lastIndex = this.items.length - 1;
+            } else {
+                this.lastIndex = 0;
+            }
+
+            const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
+            const stepX = this.itemWidth + this.spacingX;
+            const stepY = this.itemHeight + this.spacingY;
+
+            // 重新计算副轴起点
+            const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight)
+                + (groupSize - 1) * (this.scrollDir ? this.spacingX : this.spacingY);
+            let crossStart = this.scrollDir ? (-crossTotal / 2 + this.itemWidth / 2) : (crossTotal / 2 - this.itemHeight / 2);
+            if (this.scrollDir) crossStart += (this.paddingLeft - this.paddingRight) / 2;
+            else crossStart += (this.paddingBottom - this.paddingTop) / 2;
+
+            // 暴力归位所有 Item
+            for (let i = 0; i < this.items.length; i++) {
+                const item = this.items[i];
+                const mainIndex = Math.floor(i / groupSize);
+                const crossIndex = i % groupSize;
+
+                if (this.scrollDir) {
+                    const x = crossStart + crossIndex * stepX;
+                    const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2;
+                    item.setPosition(x, y, 0);
+                } else {
+                    const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2;
+                    const y = crossStart - crossIndex * stepY;
+                    item.setPosition(x, y, 0);
+                }
+            }
+        }
+
+        // 4. 刷新渲染与显隐管理
+        if (this.loadcb) {
+            this.items.forEach((item, i) => {
+                const dataIndex = this.startIndex + i;
+                if (dataIndex <= this.maxIndex) {
+                    item.active = true;
+                    this.loadcb(item, dataIndex);
+                } else {
+                    // 数据越界，隐藏该 Item，且不调用回调
+                    item.active = false;
+                }
+            });
+        }
     }
 
     /**
@@ -378,25 +572,25 @@ export class InfiniteScrollView extends Component {
         const bottomLimit = -(this.contentLength - this.paddingBottom - this.itemLength / 2)
 
         if (this.scrollDir) {
-            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
                 const contentSpan = firstItem.position.y - lastItem.position.y
                 const viewSpan = topLimit - bottomLimit
                 if (contentSpan < viewSpan) return topLimit - firstItem.position.y
             }
 
-            if (this.startIndex === 0 && firstItem.position.y < topLimit) return topLimit - firstItem.position.y
-            if (this.lastIndex === this.maxIndex && lastItem.position.y > bottomLimit) return bottomLimit - lastItem.position.y
+            if (this.startIndex <= 0 && firstItem.position.y < topLimit) return topLimit - firstItem.position.y
+            if (this.lastIndex >= this.maxIndex && lastItem.position.y > bottomLimit) return bottomLimit - lastItem.position.y
             return 0
         }
 
-        if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+        if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
             const contentSpan = lastItem.position.x - firstItem.position.x
             const viewSpan = rightLimit - leftLimit
             if (contentSpan < viewSpan) return leftLimit - firstItem.position.x
         }
 
-        if (this.startIndex === 0 && firstItem.position.x > leftLimit) return leftLimit - firstItem.position.x
-        if (this.lastIndex === this.maxIndex && lastItem.position.x < rightLimit) return rightLimit - lastItem.position.x
+        if (this.startIndex <= 0 && firstItem.position.x > leftLimit) return leftLimit - firstItem.position.x
+        if (this.lastIndex >= this.maxIndex && lastItem.position.x < rightLimit) return rightLimit - lastItem.position.x
         return 0
     }
 
@@ -423,13 +617,13 @@ export class InfiniteScrollView extends Component {
         // Check if content is smaller than view
         let isContentShort = false
         if (this.scrollDir) {
-            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
                 const contentSpan = firstItem.position.y - lastItem.position.y
                 const viewSpan = topLimit - bottomLimit
                 if (contentSpan < viewSpan) isContentShort = true
             }
         } else {
-            if (this.startIndex === 0 && this.lastIndex === this.maxIndex) {
+            if (this.startIndex <= 0 && this.lastIndex >= this.maxIndex) {
                 const contentSpan = lastItem.position.x - firstItem.position.x
                 const viewSpan = rightLimit - leftLimit
                 if (contentSpan < viewSpan) isContentShort = true
@@ -446,7 +640,7 @@ export class InfiniteScrollView extends Component {
 
         // 向上滑 (pos > 0)，内容上移 / 向右滑 (pos > 0)，内容右移
         if (pos > 0) {
-            if (this.scrollDir && this.lastIndex === this.maxIndex) {
+            if (this.scrollDir && this.lastIndex >= this.maxIndex) {
                 // If content is short, we should calculate resistance based on deviation from TOP limit, not bottom
                 if (isContentShort) {
                     const targetY = firstItem.position.y + pos
@@ -484,7 +678,7 @@ export class InfiniteScrollView extends Component {
                         }
                     }
                 }
-            } else if (!this.scrollDir && this.startIndex === 0) {
+            } else if (!this.scrollDir && this.startIndex <= 0) {
                 const targetX = firstItem.position.x + pos
                 if (targetX > leftLimit) {
                     if (this.elastic) {
@@ -506,7 +700,7 @@ export class InfiniteScrollView extends Component {
         }
         // 向下滑 (pos < 0)，内容下移 / 向左滑 (pos < 0)，内容左移
         else if (pos < 0) {
-            if (this.scrollDir && this.startIndex === 0) {
+            if (this.scrollDir && this.startIndex <= 0) {
                 const targetY = firstItem.position.y + pos
                 if (targetY < topLimit) {
                     if (this.elastic) {
@@ -524,7 +718,7 @@ export class InfiniteScrollView extends Component {
                         else pos = fix
                     }
                 }
-            } else if (!this.scrollDir && this.lastIndex === this.maxIndex) {
+            } else if (!this.scrollDir && this.lastIndex >= this.maxIndex) {
                 // If content is short, we should calculate resistance based on deviation from LEFT limit, not right
                 if (isContentShort) {
                     const targetX = firstItem.position.x + pos
@@ -619,8 +813,8 @@ export class InfiniteScrollView extends Component {
         // 水平滚动：direction > 0 (右滑，内容右移) -> 尾部出界，尾移头
 
         if (direction < 0) {
-            if (!this.circular && this.scrollDir && this.startIndex === 0) return
-            if (!this.circular && !this.scrollDir && this.lastIndex === this.maxIndex) return
+            if (!this.circular && this.scrollDir && this.startIndex <= 0) return
+            if (!this.circular && !this.scrollDir && this.lastIndex >= this.maxIndex) return
 
             // 垂直滚动：下滑，底部元素出界，放到顶部
             if (this.scrollDir && endItem.position.y < -this.contentLength - this.itemLength / 2) {
@@ -632,7 +826,13 @@ export class InfiniteScrollView extends Component {
                 for (let i = 0; i < movingItems.length; i++) {
                     const item = movingItems[i]
                     item.setPosition(item.position.x, refItem.position.y + step, 0)
-                    this.loadcb(item, this.startIndex - groupSize + i);
+                    const dataIndex = this.startIndex - groupSize + i;
+                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                        item.active = true;
+                        this.loadcb(item, dataIndex);
+                    } else {
+                        item.active = false;
+                    }
                 }
                 this.startIndex -= groupSize;
                 this.lastIndex -= groupSize;
@@ -648,15 +848,21 @@ export class InfiniteScrollView extends Component {
                 for (let i = 0; i < movingItems.length; i++) {
                     const item = movingItems[i]
                     item.setPosition(refItem.position.x + step, item.position.y, 0)
-                    this.loadcb(item, this.lastIndex + 1 + i);
+                    const dataIndex = this.lastIndex + 1 + i;
+                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                        item.active = true;
+                        this.loadcb(item, dataIndex);
+                    } else {
+                        item.active = false;
+                    }
                 }
                 this.startIndex += groupSize;
                 this.lastIndex += groupSize;
             }
 
         } else {
-            if (!this.circular && this.scrollDir && this.lastIndex === this.maxIndex) return
-            if (!this.circular && !this.scrollDir && this.startIndex === 0) return
+            if (!this.circular && this.scrollDir && this.lastIndex >= this.maxIndex) return
+            if (!this.circular && !this.scrollDir && this.startIndex <= 0) return
 
             // 垂直滚动：上滑，顶部元素出界，放到底部
             if (this.scrollDir && startItem.position.y > this.itemLength / 2) {
@@ -668,7 +874,13 @@ export class InfiniteScrollView extends Component {
                 for (let i = 0; i < movingItems.length; i++) {
                     const item = movingItems[i]
                     item.setPosition(item.position.x, refItem.position.y - step, 0)
-                    this.loadcb(item, this.lastIndex + 1 + i);
+                    const dataIndex = this.lastIndex + 1 + i;
+                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                        item.active = true;
+                        this.loadcb(item, dataIndex);
+                    } else {
+                        item.active = false;
+                    }
                 }
                 this.startIndex += groupSize;
                 this.lastIndex += groupSize;
@@ -684,7 +896,13 @@ export class InfiniteScrollView extends Component {
                 for (let i = 0; i < movingItems.length; i++) {
                     const item = movingItems[i]
                     item.setPosition(refItem.position.x - step, item.position.y, 0)
-                    this.loadcb(item, this.startIndex - groupSize + i);
+                    const dataIndex = this.startIndex - groupSize + i;
+                    if (dataIndex >= 0 && dataIndex <= this.maxIndex) {
+                        item.active = true;
+                        this.loadcb(item, dataIndex);
+                    } else {
+                        item.active = false;
+                    }
                 }
                 this.startIndex -= groupSize;
                 this.lastIndex -= groupSize;

@@ -4,6 +4,8 @@ const { ccclass, property } = _decorator;
 export interface InfiniteScrollViewOptions {
     /**列表初始加载完成的回调 */
     complete?: () => void;
+    /**指定从第几个开始加载(网格模式慎用) */
+    startIndex?: number;
 }
 
 /**
@@ -85,6 +87,8 @@ export class InfiniteScrollView extends Component {
     }
 
     update(deltaTime: number) {
+        if (this._frameLoadState) return;
+
         let v = -this.scrollSpeed
         const canRebound = this.elastic && !this.circular && !this.isTouching
 
@@ -104,7 +108,10 @@ export class InfiniteScrollView extends Component {
                 movedAny = true
                 remaining -= dt
             }
-            if (movedAny) this.updateScale()
+            if (movedAny) {
+                this.updateScale()
+                this.updateItemVisibility()
+            }
         }
 
         if (!this.isTouching) {
@@ -295,6 +302,7 @@ export class InfiniteScrollView extends Component {
 
         // 6. 更新缩放 (如果开启了 zoom)
         this.updateScale();
+        this.updateItemVisibility();
     }
 
     /**
@@ -486,12 +494,14 @@ export class InfiniteScrollView extends Component {
                 }
             });
         }
+        this.updateItemVisibility();
     }
 
     /**
      * 初始化数据（只在初始化调用一次）
      * @param itemCount 项数
      * @param eachOneItemLoadCB 每个项的加载回调
+     * @param options 选项
      */
     public initData(itemCount: number, eachOneItemLoadCB: (itemNode: Node, index: number) => void, options?: InfiniteScrollViewOptions) {
         this.unschedule(this.frameLoadLogic);
@@ -500,7 +510,10 @@ export class InfiniteScrollView extends Component {
         this.items.length = 0
 
         this.loadcb = eachOneItemLoadCB
-        this.startIndex = 0
+
+        const groupSize = this.scrollDir ? this.gridColumns : this.gridRows
+        const startIdx = options?.startIndex || 0
+        this.startIndex = Math.max(0, Math.floor(startIdx / groupSize) * groupSize)
         this.maxIndex = itemCount - 1
 
         const templateItem = this.node.children[0]
@@ -514,7 +527,6 @@ export class InfiniteScrollView extends Component {
         const contentTrans = this.node.getComponent(UITransform);
         this.contentLength = this.scrollDir ? contentTrans.height : contentTrans.width
 
-        const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
         const stepX = this.itemWidth + this.spacingX;
         const stepY = this.itemHeight + this.spacingY;
 
@@ -532,7 +544,7 @@ export class InfiniteScrollView extends Component {
             poolCount = Math.max(groupSize, poolCount)
         }
 
-        this.lastIndex = poolCount - 1
+        this.lastIndex = this.startIndex + poolCount - 1
 
         // 计算副轴起始位置，使网格居中
         const crossTotal = groupSize * (this.scrollDir ? this.itemWidth : this.itemHeight)
@@ -576,6 +588,7 @@ export class InfiniteScrollView extends Component {
                 this._initItem(item, index, groupSize, crossStart, stepX, stepY)
             }
             this.updateScale()
+            this.updateItemVisibility()
             this._registerEvents()
             if (this._completeCB) {
                 this._completeCB();
@@ -606,6 +619,7 @@ export class InfiniteScrollView extends Component {
             this.unschedule(this.frameLoadLogic);
             this._frameLoadState = null;
             this.updateScale();
+            this.updateItemVisibility();
             this._registerEvents();
             if (this._completeCB) {
                 this._completeCB();
@@ -633,7 +647,13 @@ export class InfiniteScrollView extends Component {
             item.setPosition(x, y, 0)
         }
 
-        this.loadcb(item, index)
+        const dataIndex = this.startIndex + index;
+        if (dataIndex <= this.maxIndex) {
+            item.active = true;
+            this.loadcb(item, dataIndex);
+        } else {
+            item.active = false;
+        }
     }
 
     private _registerEvents() {
@@ -689,6 +709,7 @@ export class InfiniteScrollView extends Component {
             this.updateScale()
             this.moveItem(this.scrollDir ? delta.y : delta.x)
             this.updateItemPos(this.scrollDir ? delta.y : delta.x)
+            this.updateItemVisibility()
         }, this, true)
         this.node.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
             this.isTouching = false
@@ -991,6 +1012,39 @@ export class InfiniteScrollView extends Component {
                 scale = scale * pre + this.minScale
                 item.setScale(scale, scale, scale)
             }
+        }
+    }
+
+    private updateItemVisibility() {
+        if (this.items.length === 0) return
+        const halfW = this.itemWidth / 2
+        const halfH = this.itemHeight / 2
+        const left = 0
+        const right = this.contentLength
+        const top = 0
+        const bottom = -this.contentLength
+
+        for (let i = 0; i < this.items.length; i++) {
+            const item = this.items[i]
+            const dataIndex = this.startIndex + i
+            if (dataIndex < 0 || dataIndex > this.maxIndex) {
+                if (item.active) item.active = false
+                continue
+            }
+
+            const p = item.position
+            let visible = true
+            if (this.scrollDir) {
+                const yTop = p.y + halfH
+                const yBottom = p.y - halfH
+                visible = yBottom <= top && yTop >= bottom
+            } else {
+                const xLeft = p.x - halfW
+                const xRight = p.x + halfW
+                visible = xRight >= left && xLeft <= right
+            }
+
+            if (item.active !== visible) item.active = visible
         }
     }
 

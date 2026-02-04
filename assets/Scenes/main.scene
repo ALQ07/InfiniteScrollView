@@ -1010,7 +1010,7 @@
     "_enabled": true,
     "__prefab": null,
     "scrollDir": 1,
-    "gridColumns": 3,
+    "gridColumns": 1,
     "gridRows": 4,
     "spacingX": 5,
     "spacingY": 50,

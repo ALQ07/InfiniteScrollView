@@ -22,7 +22,9 @@ export class InfiniteScrollView extends Component {
     @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' }) elastic: boolean = true
     @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } }) bounceDamping: number = 1
     @property({ type: Boolean, tooltip: '是否双向循环滚动' }) circular: boolean = false
-    @property({ type: Boolean, tooltip: '放大镜效果' }) zoom: boolean = false
+    @property({ type: Boolean, tooltip: '是否开启放大镜效果' }) zoom: boolean = false
+    @property({ type: Boolean, tooltip: '是否开启分帧加载' }) frameLoad: boolean = false
+    @property({ type: Number, tooltip: '分帧加载间隔时间（秒）', visible: function (this: InfiniteScrollView) { return this.frameLoad; } }) frameLoadInterval: number = 0.02
 
     private itemLength: number = 0
     private itemWidth: number = 0
@@ -51,6 +53,8 @@ export class InfiniteScrollView extends Component {
     private lastIndex: number = 0
     private maxIndex: number = 0
     private dragThreshold: number = 10 // 拖动阈值（像素）
+    private _frameLoadState: any = null;
+
     protected onLoad(): void {
         // this.initData()
     }
@@ -128,6 +132,7 @@ export class InfiniteScrollView extends Component {
      * @param eachOneItemLoadCB 每个项的加载回调
      */
     public initData(itemCount: number, eachOneItemLoadCB: (itemNode: Node, index: number) => void) {
+        this.unschedule(this.frameLoadLogic);
         if (itemCount <= 0) return
         this.items.length = 0
 
@@ -164,16 +169,6 @@ export class InfiniteScrollView extends Component {
             poolCount = Math.max(groupSize, poolCount)
         }
 
-        while (this.node.children.length < poolCount) {
-            const cloned = instantiate(templateItem)
-            cloned.parent = this.node
-        }
-        while (this.node.children.length > poolCount) {
-            const extra = this.node.children[this.node.children.length - 1]
-            extra.removeFromParent()
-            extra.destroy()
-        }
-
         this.lastIndex = poolCount - 1
 
         // 计算副轴起始位置，使网格居中
@@ -183,30 +178,99 @@ export class InfiniteScrollView extends Component {
         if (this.scrollDir) crossStart += (this.paddingLeft - this.paddingRight) / 2;
         else crossStart += (this.paddingBottom - this.paddingTop) / 2;
 
-        const children = this.node.children
-        for (let index = 0; index < children.length; index++) {
-            const item = children[index]
-            this.items.push(item)
-            item.getComponent(UITransform).setAnchorPoint(0.5, 0.5)
-
-            const mainIndex = Math.floor(index / groupSize);
-            const crossIndex = index % groupSize;
-
-            if (this.scrollDir) {
-                // 垂直滚动
-                const x = crossStart + crossIndex * stepX;
-                const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2;
-                item.setPosition(x, y, 0)
-            } else {
-                // 水平滚动
-                const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2;
-                const y = crossStart - crossIndex * stepY;
-                item.setPosition(x, y, 0)
+        if (this.frameLoad) {
+            // 立即移除多余节点
+            while (this.node.children.length > poolCount) {
+                const extra = this.node.children[this.node.children.length - 1]
+                extra.removeFromParent()
+                extra.destroy()
             }
 
-            this.loadcb(item, index)
+            this._frameLoadState = {
+                poolCount,
+                templateItem,
+                crossStart,
+                stepX,
+                stepY,
+                groupSize,
+                currentIndex: 0
+            };
+            this.schedule(this.frameLoadLogic, this.frameLoadInterval);
+        } else {
+            while (this.node.children.length < poolCount) {
+                const cloned = instantiate(templateItem)
+                cloned.parent = this.node
+            }
+            while (this.node.children.length > poolCount) {
+                const extra = this.node.children[this.node.children.length - 1]
+                extra.removeFromParent()
+                extra.destroy()
+            }
+
+            const children = this.node.children
+            for (let index = 0; index < children.length; index++) {
+                const item = children[index]
+                this._initItem(item, index, groupSize, crossStart, stepX, stepY)
+            }
+            this.updateScale()
+            this._registerEvents()
         }
-        this.updateScale()
+    }
+
+    private frameLoadLogic() {
+        const state = this._frameLoadState;
+        if (!state) return;
+
+        const { poolCount, templateItem, crossStart, stepX, stepY, groupSize } = state;
+
+        let item: Node;
+        if (state.currentIndex < this.node.children.length) {
+            item = this.node.children[state.currentIndex];
+        } else {
+            item = instantiate(templateItem);
+            item.parent = this.node;
+        }
+
+        this._initItem(item, state.currentIndex, groupSize, crossStart, stepX, stepY);
+
+        state.currentIndex++;
+
+        if (state.currentIndex >= poolCount) {
+            this.unschedule(this.frameLoadLogic);
+            this._frameLoadState = null;
+            this.updateScale();
+            this._registerEvents();
+        }
+    }
+
+    private _initItem(item: Node, index: number, groupSize: number, crossStart: number, stepX: number, stepY: number) {
+        this.items.push(item)
+        item.getComponent(UITransform).setAnchorPoint(0.5, 0.5)
+
+        const mainIndex = Math.floor(index / groupSize);
+        const crossIndex = index % groupSize;
+
+        if (this.scrollDir) {
+            // 垂直滚动
+            const x = crossStart + crossIndex * stepX;
+            const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2;
+            item.setPosition(x, y, 0)
+        } else {
+            // 水平滚动
+            const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2;
+            const y = crossStart - crossIndex * stepY;
+            item.setPosition(x, y, 0)
+        }
+
+        this.loadcb(item, index)
+    }
+
+    private _registerEvents() {
+        this.node.off(Node.EventType.TOUCH_START);
+        this.node.off(Node.EventType.TOUCH_MOVE);
+        this.node.off(Node.EventType.TOUCH_END);
+        this.node.off(Node.EventType.TOUCH_CANCEL);
+
         this.node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
             this.isTouching = true
             this.isDragging = false

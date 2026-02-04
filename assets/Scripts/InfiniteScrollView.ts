@@ -1,11 +1,18 @@
 import { _decorator, Component, EventTouch, instantiate, Node, UITransform } from 'cc';
 const { ccclass, property } = _decorator;
+
+export interface InfiniteScrollViewOptions {
+    /**列表初始加载完成的回调 */
+    complete?: () => void;
+}
+
 /**
  * 将此脚本挂在任意Node上，然后在Node下面添加一个item节点作为原型，
  * 脚本会根据原型节点的大小和间隔，动态创建和管理子节点，实现无限滚动效果。
  * 垂直时，Node锚点应为：（0.5,1）
  * 水平时，Node锚点应为：（0,0.5）
  */
+
 @ccclass('InfiniteScrollView')
 export class InfiniteScrollView extends Component {
     @property({ type: Number, tooltip: '水平或垂直滚动：0-水平，1-垂直' })
@@ -71,6 +78,7 @@ export class InfiniteScrollView extends Component {
     private maxIndex: number = 0
     private dragThreshold: number = 10 // 拖动阈值（像素）
     private _frameLoadState: any = null;
+    private _completeCB: (() => void) | null = null;
 
     protected onLoad(): void {
         // this.initData()
@@ -485,8 +493,9 @@ export class InfiniteScrollView extends Component {
      * @param itemCount 项数
      * @param eachOneItemLoadCB 每个项的加载回调
      */
-    public initData(itemCount: number, eachOneItemLoadCB: (itemNode: Node, index: number) => void) {
+    public initData(itemCount: number, eachOneItemLoadCB: (itemNode: Node, index: number) => void, options?: InfiniteScrollViewOptions) {
         this.unschedule(this.frameLoadLogic);
+        this._completeCB = options?.complete || null;
         if (itemCount <= 0) return
         this.items.length = 0
 
@@ -568,6 +577,10 @@ export class InfiniteScrollView extends Component {
             }
             this.updateScale()
             this._registerEvents()
+            if (this._completeCB) {
+                this._completeCB();
+                this._completeCB = null;
+            }
         }
     }
 
@@ -594,6 +607,10 @@ export class InfiniteScrollView extends Component {
             this._frameLoadState = null;
             this.updateScale();
             this._registerEvents();
+            if (this._completeCB) {
+                this._completeCB();
+                this._completeCB = null;
+            }
         }
     }
 

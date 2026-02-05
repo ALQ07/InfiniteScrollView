@@ -11,9 +11,11 @@ export class Usage extends Component {
     private itemIndex: number = 0;
 
     start() {
-        this.content.getComponent(InfiniteScrollView).initData(30, (itemNode: Node, index: number) => {
+        this.content.getComponent(InfiniteScrollView).initData(25, (itemNode: Node, index: number) => {
             itemNode.getChildByPath('Label').getComponent(Label).string = `${index}`;
             itemNode.getChildByPath('Button').on(Button.EventType.CLICK, this.onClickButton, this);
+        }, {
+            startIndex: 5
         });
     }
 

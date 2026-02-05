@@ -38,7 +38,7 @@ export class InfiniteScrollView extends Component {
     @property({ type: Boolean, tooltip: '是否开启惯性滚动' })
     inertia: boolean = true
     @property({ type: Number, tooltip: '惯性刹车系数（0~1，越小停止越快）', range: [0, 1, 0.01], slide: true, visible: function (this: InfiniteScrollView) { return this.inertia; } })
-    brake: number = 0.93
+    brake: number = 0.5
     @property({ type: Boolean, tooltip: '回弹效果（允许越界并松手回弹）' })
     elastic: boolean = true
     @property({ type: Number, tooltip: '回弹阻尼系数（越大越难拉，1为默认）', visible: function (this: InfiniteScrollView) { return this.elastic; } })
@@ -125,14 +125,14 @@ export class InfiniteScrollView extends Component {
                     v = v * exp + (k * rebound / cc) * (1 - exp)
                 } else if (this.inertia) {
                     const brake = Math.max(0, Math.min(1, this.brake))
-                    const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
+                    const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime)
                     v *= factor
                 } else {
                     v = 0
                 }
             } else if (this.inertia) {
                 const brake = Math.max(0, Math.min(1, this.brake))
-                const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime * 10)
+                const factor = brake === 0 ? 0 : Math.pow(brake, deltaTime)
                 v *= factor
             } else {
                 v = 0
@@ -257,10 +257,6 @@ export class InfiniteScrollView extends Component {
 
         for (let i = 0; i < this.items.length; i++) {
             const item = this.items[i];
-            // 这里的 i 是相对于 items 数组的索引
-            // 对应的逻辑索引是 newStartIndex + i
-            // 但是布局时，我们要根据“相对于 newStartIndex 的偏移”来布局
-
             // 这里的 mainIndex 是相对于当前视口顶部的行数
             const currMainIndex = Math.floor(i / groupSize);
             const currCrossIndex = i % groupSize;
@@ -374,10 +370,6 @@ export class InfiniteScrollView extends Component {
                         // 计算新节点相对于上一个节点的偏移
                         // 如果刚好换行/换列
                         if ((lastIndex + 1) % groupSize === 0) {
-                            // 换行/列：主轴增加一个 stepMain，副轴重置到起始
-                            // 注意：这里的副轴起始位置比较难获取，但我们可以利用 items[lastIndex - (groupSize - 1)] 的位置
-                            // 或者更简单：新位置 = 上一行同列位置 + stepMain
-                            // 因为 items 是连续填充的，所以新节点 (index) 应该在 index - groupSize 的那个节点的主轴方向 + stepMain
                             const refItem = this.items[this.items.length - groupSize];
                             if (this.scrollDir) {
                                 item.setPosition(refItem.position.x, refItem.position.y - stepMain, 0);
@@ -554,6 +546,18 @@ export class InfiniteScrollView extends Component {
             }
         }
 
+        let initOffset = 0
+        // 如果池子大小足以容纳所有数据，强制从 0 开始，并计算初始偏移量模拟 startIndex
+        if (poolCount >= itemCount) {
+            if (startIdx > 0) {
+                const row = Math.floor(startIdx / groupSize)
+                const stepMain = this.scrollDir ? stepY : stepX
+                if (this.scrollDir) initOffset = row * stepMain
+                else initOffset = -row * stepMain
+            }
+            this.startIndex = 0
+        }
+
         this.lastIndex = this.startIndex + poolCount - 1
 
         // 计算副轴起始位置，使网格居中
@@ -578,7 +582,8 @@ export class InfiniteScrollView extends Component {
                 stepX,
                 stepY,
                 groupSize,
-                currentIndex: 0
+                currentIndex: 0,
+                initOffset
             };
             this.schedule(this.frameLoadLogic, this.frameLoadInterval);
         } else {
@@ -595,7 +600,7 @@ export class InfiniteScrollView extends Component {
             const children = this.node.children
             for (let index = 0; index < children.length; index++) {
                 const item = children[index]
-                this._initItem(item, index, groupSize, crossStart, stepX, stepY)
+                this._initItem(item, index, groupSize, crossStart, stepX, stepY, initOffset)
             }
             this.updateScale()
             this.updateItemVisibility()
@@ -611,7 +616,7 @@ export class InfiniteScrollView extends Component {
         const state = this._frameLoadState;
         if (!state) return;
 
-        const { poolCount, templateItem, crossStart, stepX, stepY, groupSize } = state;
+        const { poolCount, templateItem, crossStart, stepX, stepY, groupSize, initOffset } = state;
 
         let item: Node;
         if (state.currentIndex < this.node.children.length) {
@@ -621,7 +626,7 @@ export class InfiniteScrollView extends Component {
             item.parent = this.node;
         }
 
-        this._initItem(item, state.currentIndex, groupSize, crossStart, stepX, stepY);
+        this._initItem(item, state.currentIndex, groupSize, crossStart, stepX, stepY, initOffset);
 
         state.currentIndex++;
 
@@ -638,7 +643,7 @@ export class InfiniteScrollView extends Component {
         }
     }
 
-    private _initItem(item: Node, index: number, groupSize: number, crossStart: number, stepX: number, stepY: number) {
+    private _initItem(item: Node, index: number, groupSize: number, crossStart: number, stepX: number, stepY: number, initOffset: number = 0) {
         this.items.push(item)
         item.getComponent(UITransform).setAnchorPoint(0.5, 0.5)
 
@@ -648,11 +653,11 @@ export class InfiniteScrollView extends Component {
         if (this.scrollDir) {
             // 垂直滚动
             const x = crossStart + crossIndex * stepX;
-            const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2;
+            const y = -this.paddingTop - mainIndex * stepY - this.itemHeight / 2 + initOffset;
             item.setPosition(x, y, 0)
         } else {
             // 水平滚动
-            const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2;
+            const x = this.paddingLeft + mainIndex * stepX + this.itemWidth / 2 + initOffset;
             const y = crossStart - crossIndex * stepY;
             item.setPosition(x, y, 0)
         }
@@ -1060,6 +1065,9 @@ export class InfiniteScrollView extends Component {
         if (direction == 0) return
         const groupSize = this.scrollDir ? this.gridColumns : this.gridRows;
         if (this.items.length < groupSize) return;
+
+        // 如果非循环模式且已经加载了所有数据，则不需要回收复用
+        if (!this.circular && this.items.length >= this.maxIndex + 1) return;
 
         const startItem = this.items[0]
         const endItem = this.items[this.items.length - 1]
